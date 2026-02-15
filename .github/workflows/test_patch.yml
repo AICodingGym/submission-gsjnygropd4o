@@ -1,0 +1,490 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "matplotlib__matplotlib-25332"
+      REPO: "matplotlib/matplotlib"
+      VERSION: "3.7"
+      BASE_COMMIT: "66ba515e671638971bd11a34cff12c107a437e0b"
+      ENV_SETUP_COMMIT: "0849036fd992a2dd133a0cffc3f84f58ccf1840f"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'lib/matplotlib/tests/test_pickle.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.11"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=conda_forge
+            - _openmp_mutex=4.5=2_gnu
+            - accessible-pygments=0.0.5=pyhd8ed1ab_0
+            - adwaita-icon-theme=47.0=unix_0
+            - alabaster=1.0.0=pyhd8ed1ab_0
+            - alsa-lib=1.2.12=h4ab18f5_0
+            - asttokens=2.4.1=pyhd8ed1ab_0
+            - at-spi2-atk=2.38.0=h0630a04_3
+            - at-spi2-core=2.40.3=h0630a04_0
+            - atk-1.0=2.38.0=h04ea711_2
+            - attr=2.5.1=h166bdaf_1
+            - attrs=24.2.0=pyh71513ae_0
+            - babel=2.14.0=pyhd8ed1ab_0
+            - beautifulsoup4=4.12.3=pyha770c72_0
+            - black=24.8.0=py311h06a4308_0
+            - blas=1.0=openblas
+            - bleach=6.1.0=pyhd8ed1ab_0
+            - bottleneck=1.3.7=py311hf4808d0_0
+            - brotli=1.1.0=hb9d3cd8_2
+            - brotli-bin=1.1.0=hb9d3cd8_2
+            - brotli-python=1.0.9=py311h6a678d5_8
+            - bzip2=1.0.8=h4bc722e_7
+            - c-ares=1.33.1=heb4867d_0
+            - ca-certificates=2024.9.24=h06a4308_0
+            - cairo=1.18.0=hebfffa5_3
+            - cairocffi=1.6.1=pyhd8ed1ab_0
+            - certifi=2024.8.30=py311h06a4308_0
+            - cffi=1.17.1=py311h1fdaa30_0
+            - cfgv=3.3.1=pyhd8ed1ab_0
+            - charset-normalizer=3.4.0=pyhd8ed1ab_0
+            - click=8.1.7=unix_pyh707e725_0
+            - colorama=0.4.6=pyhd8ed1ab_0
+            - colorspacious=1.1.2=pyh24bf2e0_0
+            - comm=0.2.2=pyhd8ed1ab_0
+            - coverage=7.6.1=py311h5eee18b_0
+            - dbus=1.13.6=h5008d03_3
+            - debugpy=1.6.7=py311h6a678d5_0
+            - decorator=5.1.1=pyhd8ed1ab_0
+            - defusedxml=0.7.1=pyhd8ed1ab_0
+            - distlib=0.3.8=pyhd8ed1ab_0
+            - docutils=0.21.2=pyhd8ed1ab_0
+            - entrypoints=0.4=pyhd8ed1ab_0
+            - epoxy=1.5.10=h166bdaf_1
+            - exceptiongroup=1.2.2=pyhd8ed1ab_0
+            - execnet=2.1.1=pyhd8ed1ab_0
+            - executing=2.1.0=pyhd8ed1ab_0
+            - expat=2.6.3=h5888daf_0
+            - filelock=3.16.1=pyhd8ed1ab_0
+            - flake8=7.1.1=pyhd8ed1ab_0
+            - flake8-docstrings=1.7.0=pyhd8ed1ab_0
+            - font-ttf-dejavu-sans-mono=2.37=hab24e00_0
+            - font-ttf-inconsolata=3.000=h77eed37_0
+            - font-ttf-source-code-pro=2.038=h77eed37_0
+            - font-ttf-ubuntu=0.83=h77eed37_3
+            - fontconfig=2.14.2=h14ed4e7_0
+            - fonts-conda-ecosystem=1=0
+            - fonts-conda-forge=1=0
+            - freetype=2.12.1=h267a509_2
+            - fribidi=1.0.10=h36c2ea0_0
+            - gdk-pixbuf=2.42.12=hb9ae30d_0
+            - gettext=0.22.5=he02047a_3
+            - gettext-tools=0.22.5=he02047a_3
+            - glib=2.82.1=h2ff4ddf_0
+            - glib-tools=2.82.1=h4833e2c_0
+            - graphite2=1.3.13=h59595ed_1003
+            - graphviz=12.0.0=hba01fac_0
+            - gst-plugins-base=1.24.7=h0a52356_0
+            - gstreamer=1.24.7=hf3bb09a_0
+            - gtk2=2.24.33=h6470451_5
+            - gtk3=3.24.43=hd6cba2e_1
+            - gtk4=4.12.1=h6380061_4
+            - gts=0.7.6=h977cf35_4
+            - h2=4.1.0=pyhd8ed1ab_0
+            - harfbuzz=9.0.0=hda332d3_1
+            - hicolor-icon-theme=0.17=ha770c72_2
+            - hpack=4.0.0=pyh9f0ad1d_0
+            - hyperframe=6.0.1=pyhd8ed1ab_0
+            - icu=75.1=he02047a_0
+            - identify=2.6.1=pyhd8ed1ab_0
+            - idna=3.10=pyhd8ed1ab_0
+            - imagesize=1.4.1=pyhd8ed1ab_0
+            - importlib-metadata=8.5.0=pyha770c72_0
+            - importlib-resources=6.4.5=pyhd8ed1ab_0
+            - importlib_resources=6.4.5=pyhd8ed1ab_0
+            - iniconfig=2.0.0=pyhd8ed1ab_0
+            - ipykernel=6.29.5=pyh3099207_0
+            - ipython=8.28.0=pyh707e725_0
+            - ipywidgets=8.1.5=pyhd8ed1ab_0
+            - jedi=0.19.1=pyhd8ed1ab_0
+            - jinja2=3.1.4=pyhd8ed1ab_0
+            - jsonschema=4.23.0=pyhd8ed1ab_0
+            - jsonschema-specifications=2024.10.1=pyhd8ed1ab_0
+            - jupyter_client=8.6.3=pyhd8ed1ab_0
+            - jupyter_core=5.7.2=pyh31011fe_1
+            - jupyterlab_pygments=0.3.0=pyhd8ed1ab_1
+            - jupyterlab_widgets=3.0.13=pyhd8ed1ab_0
+            - keyutils=1.6.1=h166bdaf_0
+            - krb5=1.21.3=h659f571_0
+            - lame=3.100=h166bdaf_1003
+            - lcms2=2.16=hb7c19ff_0
+            - ld_impl_linux-64=2.43=h712a8e2_1
+            - lerc=4.0.0=h27087fc_0
+            - libasprintf=0.22.5=he8f35ee_3
+            - libasprintf-devel=0.22.5=he8f35ee_3
+            - libblas=3.9.0=24_linux64_openblas
+            - libbrotlicommon=1.1.0=hb9d3cd8_2
+            - libbrotlidec=1.1.0=hb9d3cd8_2
+            - libbrotlienc=1.1.0=hb9d3cd8_2
+            - libcap=2.69=h0f662aa_0
+            - libcblas=3.9.0=24_linux64_openblas
+            - libclang-cpp15=15.0.7=default_h127d8a8_5
+            - libclang13=19.1.1=default_h9c6a7e4_0
+            - libcups=2.3.3=h4637d8d_4
+            - libcurl=8.10.1=hbbe4b11_0
+            - libdeflate=1.21=h4bc722e_0
+            - libdrm=2.4.123=hb9d3cd8_0
+            - libedit=3.1.20191231=he28a2e2_2
+            - libegl=1.7.0=ha4b6fd6_1
+            - libev=4.33=hd590300_2
+            - libevent=2.1.12=hf998b51_1
+            - libexpat=2.6.3=h5888daf_0
+            - libffi=3.4.2=h7f98852_5
+            - libflac=1.4.3=h59595ed_0
+            - libgcc=14.1.0=h77fa898_1
+            - libgcc-ng=14.1.0=h69a702a_1
+            - libgcrypt=1.11.0=h4ab18f5_1
+            - libgd=2.3.3=hd3e95f3_10
+            - libgettextpo=0.22.5=he02047a_3
+            - libgettextpo-devel=0.22.5=he02047a_3
+            - libgfortran=14.1.0=h69a702a_1
+            - libgfortran-ng=14.1.0=h69a702a_1
+            - libgfortran5=14.1.0=hc5f4f2c_1
+            - libgirepository=1.82.0=h0dcfedc_0
+            - libgl=1.7.0=ha4b6fd6_1
+            - libglib=2.82.1=h2ff4ddf_0
+            - libglvnd=1.7.0=ha4b6fd6_1
+            - libglx=1.7.0=ha4b6fd6_1
+            - libgomp=14.1.0=h77fa898_1
+            - libgpg-error=1.50=h4f305b6_0
+            - libgraphene=1.10.8=hc02c970_0
+            - libiconv=1.17=hd590300_2
+            - libjpeg-turbo=3.0.0=hd590300_1
+            - liblapack=3.9.0=24_linux64_openblas
+            - libllvm15=15.0.7=hb3ce162_4
+            - libllvm19=19.1.1=ha7bfdaf_0
+            - libnghttp2=1.58.0=h47da74e_1
+            - libnsl=2.0.1=hd590300_0
+            - libogg=1.3.5=h4ab18f5_0
+            - libopenblas=0.3.27=pthreads_hac2b453_1
+            - libopus=1.3.1=h7f98852_1
+            - libpciaccess=0.18=hd590300_0
+            - libpng=1.6.44=hadc24fc_0
+            - libpq=16.4=h2d7952a_2
+            - librsvg=2.58.4=hc0ffecb_0
+            - libsndfile=1.2.2=hc60ed4a_1
+            - libsodium=1.0.20=h4ab18f5_0
+            - libsqlite=3.46.1=hadc24fc_0
+            - libssh2=1.11.0=h0841786_0
+            - libstdcxx=14.1.0=hc0a3c3a_1
+            - libstdcxx-ng=14.1.0=h4852527_1
+            - libsystemd0=256.7=h2774228_0
+            - libtiff=4.6.0=h46a8edc_4
+            - libuuid=2.38.1=h0b41bf4_0
+            - libvorbis=1.3.7=h9c3ff4c_0
+            - libwebp-base=1.4.0=hd590300_0
+            - libxcb=1.17.0=h8a09558_0
+            - libxcrypt=4.4.36=hd590300_1
+            - libxkbcommon=1.7.0=h2c5496b_1
+            - libxml2=2.12.7=he7c6b58_4
+            - libzlib=1.3.1=hb9d3cd8_2
+            - lz4-c=1.9.4=hcb278e6_0
+            - markupsafe=2.1.3=py311h5eee18b_0
+            - mccabe=0.7.0=pyhd8ed1ab_0
+            - mistune=3.0.2=pyhd8ed1ab_0
+            - mpg123=1.32.6=h59595ed_0
+            - munkres=1.1.4=pyh9f0ad1d_0
+            - mypy_extensions=1.0.0=pyha770c72_0
+            - mysql-common=9.0.1=h266115a_1
+            - mysql-libs=9.0.1=he0572af_1
+            - nbclient=0.10.0=pyhd8ed1ab_0
+            - nbconvert=7.16.4=hd8ed1ab_1
+            - nbconvert-core=7.16.4=pyhd8ed1ab_1
+            - nbconvert-pandoc=7.16.4=hd8ed1ab_1
+            - nbformat=5.10.4=pyhd8ed1ab_0
+            - ncurses=6.5=he02047a_1
+            - nest-asyncio=1.6.0=pyhd8ed1ab_0
+            - nodeenv=1.9.1=pyhd8ed1ab_0
+            - nspr=4.35=h27087fc_0
+            - nss=3.105=hd34e28f_0
+            - numexpr=2.8.7=py311h812550d_0
+            - numpydoc=1.8.0=pyhd8ed1ab_0
+            - openjpeg=2.5.2=h488ebb8_0
+            - openssl=3.3.2=hb9d3cd8_0
+            - pandas=2.2.2=py311ha02d727_0
+            - pandoc=3.5=ha770c72_0
+            - pandocfilters=1.5.0=pyhd8ed1ab_0
+            - pango=1.54.0=h4c5309f_1
+            - parso=0.8.4=pyhd8ed1ab_0
+            - pathspec=0.12.1=pyhd8ed1ab_0
+            - pcre2=10.44=hba22ea6_2
+            - pexpect=4.9.0=pyhd8ed1ab_0
+            - pickleshare=0.7.5=py_1003
+            - pip=24.2=pyh8b19718_1
+            - pixman=0.43.2=h59595ed_0
+            - pkgutil-resolve-name=1.3.10=pyhd8ed1ab_1
+            - platformdirs=4.3.6=pyhd8ed1ab_0
+            - pluggy=1.5.0=pyhd8ed1ab_0
+            - ply=3.11=pyhd8ed1ab_2
+            - pre-commit=4.0.1=pyha770c72_0
+            - prompt-toolkit=3.0.48=pyha770c72_0
+            - psutil=5.9.0=py311h5eee18b_0
+            - pthread-stubs=0.4=hb9d3cd8_1002
+            - ptyprocess=0.7.0=pyhd3deb0d_0
+            - pulseaudio-client=17.0=hb77b528_0
+            - pure_eval=0.2.3=pyhd8ed1ab_0
+            - pybind11=2.12.0=py311hdb19cb5_0
+            - pybind11-global=2.12.0=py311hdb19cb5_0
+            - pycairo=1.23.0=py311hd1222b9_0
+            - pycodestyle=2.12.1=pyhd8ed1ab_0
+            - pycparser=2.22=pyhd8ed1ab_0
+            - pydata-sphinx-theme=0.15.4=pyhd8ed1ab_0
+            - pydocstyle=6.3.0=pyhd8ed1ab_0
+            - pyflakes=3.2.0=pyhd8ed1ab_0
+            - pygments=2.18.0=pyhd8ed1ab_0
+            - pygobject=3.50.0=py311hba7ce5e_0
+            - pyqt=5.15.10=py311h6a678d5_0
+            - pyqt5-sip=12.13.0=py311h5eee18b_0
+            - pysocks=1.7.1=pyha2e5f31_6
+            - pytest=8.3.3=pyhd8ed1ab_0
+            - pytest-cov=5.0.0=pyhd8ed1ab_0
+            - pytest-rerunfailures=14.0=pyhd8ed1ab_0
+            - pytest-timeout=2.3.1=pyhd8ed1ab_1
+            - pytest-xdist=3.6.1=pyhd8ed1ab_0
+            - python=3.11.10=hc5c86c4_2_cpython
+            - python-fastjsonschema=2.20.0=pyhd8ed1ab_0
+            - python-tzdata=2024.2=pyhd8ed1ab_0
+            - python_abi=3.11=5_cp311
+            - pytz=2024.1=pyhd8ed1ab_0
+            - pyyaml=6.0.1=py311h5eee18b_0
+            - pyzmq=25.1.2=py311h6a678d5_0
+            - qt-main=5.15.8=h3155989_26
+            - readline=8.2=h8228510_1
+            - referencing=0.35.1=pyhd8ed1ab_0
+            - requests=2.32.3=pyhd8ed1ab_0
+            - rpds-py=0.10.6=py311hb02cf49_0
+            - setuptools_scm=8.1.0=hd8ed1ab_0
+            - sip=6.7.12=py311h6a678d5_0
+            - six=1.16.0=pyh6c4a22f_0
+            - snowballstemmer=2.2.0=pyhd8ed1ab_0
+            - soupsieve=2.5=pyhd8ed1ab_1
+            - sphinx=8.0.2=pyhd8ed1ab_0
+            - sphinx-copybutton=0.5.2=pyhd8ed1ab_0
+            - sphinx-design=0.6.1=pyhd8ed1ab_1
+            - sphinx-gallery=0.18.0=pyhd8ed1ab_0
+            - sphinxcontrib-applehelp=2.0.0=pyhd8ed1ab_0
+            - sphinxcontrib-devhelp=2.0.0=pyhd8ed1ab_0
+            - sphinxcontrib-htmlhelp=2.1.0=pyhd8ed1ab_0
+            - sphinxcontrib-jsmath=1.0.1=pyhd8ed1ab_0
+            - sphinxcontrib-qthelp=2.0.0=pyhd8ed1ab_0
+            - sphinxcontrib-serializinghtml=1.1.10=pyhd8ed1ab_0
+            - stack_data=0.6.2=pyhd8ed1ab_0
+            - tabulate=0.9.0=pyhd8ed1ab_1
+            - tinycss2=1.3.0=pyhd8ed1ab_0
+            - tk=8.6.13=noxft_h4845f30_101
+            - toml=0.10.2=pyhd8ed1ab_0
+            - tomli=2.0.2=pyhd8ed1ab_0
+            - tornado=6.4.1=py311h5eee18b_0
+            - traitlets=5.14.3=pyhd8ed1ab_0
+            - tzdata=2024b=hc8b5060_0
+            - ukkonen=1.0.1=py311hdb19cb5_0
+            - unicodedata2=15.1.0=py311h5eee18b_0
+            - urllib3=2.2.3=pyhd8ed1ab_0
+            - virtualenv=20.26.6=pyhd8ed1ab_0
+            - wayland=1.23.1=h3e06ad9_0
+            - wcwidth=0.2.13=pyhd8ed1ab_0
+            - webencodings=0.5.1=pyhd8ed1ab_2
+            - wheel=0.44.0=pyhd8ed1ab_0
+            - widgetsnbextension=4.0.13=pyhd8ed1ab_0
+            - wxpython=4.2.2=py311hfdbb021_1
+            - wxwidgets=3.2.6=hb148c31_0
+            - xcb-util=0.4.1=hb711507_2
+            - xcb-util-image=0.4.0=hb711507_2
+            - xcb-util-keysyms=0.4.1=hb711507_0
+            - xcb-util-renderutil=0.3.10=hb711507_0
+            - xcb-util-wm=0.4.2=hb711507_0
+            - xkeyboard-config=2.43=hb9d3cd8_0
+            - xorg-libice=1.1.1=hb9d3cd8_1
+            - xorg-libsm=1.2.4=he73a12e_1
+            - xorg-libx11=1.8.10=h4f16b4b_0
+            - xorg-libxau=1.0.11=hb9d3cd8_1
+            - xorg-libxcomposite=0.4.6=hb9d3cd8_2
+            - xorg-libxcursor=1.2.2=hb9d3cd8_0
+            - xorg-libxdamage=1.1.6=hb9d3cd8_0
+            - xorg-libxdmcp=1.1.5=hb9d3cd8_0
+            - xorg-libxext=1.3.6=hb9d3cd8_0
+            - xorg-libxfixes=6.0.1=hb9d3cd8_0
+            - xorg-libxi=1.8.2=hb9d3cd8_0
+            - xorg-libxinerama=1.1.5=h5888daf_1
+            - xorg-libxrandr=1.5.4=hb9d3cd8_0
+            - xorg-libxrender=0.9.11=hb9d3cd8_1
+            - xorg-libxtst=1.2.5=hb9d3cd8_3
+            - xorg-libxxf86vm=1.1.5=hb9d3cd8_3
+            - xorg-xf86vidmodeproto=2.3.1=hb9d3cd8_1003
+            - xorg-xineramaproto=1.2.1=hb9d3cd8_1002
+            - xorg-xorgproto=2024.1=hb9d3cd8_1
+            - xorg-xproto=7.0.31=hb9d3cd8_1008
+            - xz=5.2.6=h166bdaf_0
+            - yaml=0.2.5=h7f98852_2
+            - zeromq=4.3.5=h3b0a872_6
+            - zipp=3.20.2=pyhd8ed1ab_0
+            - zlib=1.3.1=hb9d3cd8_2
+            - zstandard=0.19.0=py311h5eee18b_0
+            - zstd=1.5.6=ha6fb4c9_0
+            - pip:
+                - contourpy==1.1.0
+                - cycler==0.11.0
+                - deprecation==2.1.0
+                - fonttools==4.42.1
+                - ghostscript==0.7
+                - kiwisolver==1.4.5
+                - lxml==5.3.0
+                - numpy==1.25.2
+                - packaging==23.1
+                - pikepdf==8.4.1
+                - pillow==10.0.0
+                - pyparsing==3.0.9
+                - python-dateutil==2.8.2
+                - setuptools==68.1.2
+                - setuptools-scm==7.1.0
+                - typing-extensions==4.7.1
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install contourpy==1.1.0 cycler==0.11.0 fonttools==4.42.1 ghostscript kiwisolver==1.4.5 numpy==1.25.2 packaging==23.1 pillow==10.0.0 pikepdf pyparsing==3.0.9 python-dateutil==2.8.2 six==1.16.0 setuptools==68.1.2 setuptools-scm==7.1.0 typing-extensions==4.7.1
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          sudo apt-get -y update && sudo apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive sudo apt-get install -y imagemagick ffmpeg texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex texlive-luatex cm-super dvipng
+          QHULL_URL="http://www.qhull.org/download/qhull-2020-src-8.0.2.tgz"
+          QHULL_TAR="/tmp/qhull-2020-src-8.0.2.tgz"
+          QHULL_BUILD_DIR="$GITHUB_WORKSPACE/build"
+          wget -O "$QHULL_TAR" "$QHULL_URL"
+          mkdir -p "$QHULL_BUILD_DIR"
+          tar -xvzf "$QHULL_TAR" -C "$QHULL_BUILD_DIR"
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/lib/matplotlib/tests/test_pickle.py b/lib/matplotlib/tests/test_pickle.py
+          --- a/lib/matplotlib/tests/test_pickle.py
+          +++ b/lib/matplotlib/tests/test_pickle.py
+          @@ -58,6 +58,7 @@ def _generate_complete_test_figure(fig_ref):
+               # Ensure lists also pickle correctly.
+               plt.subplot(3, 3, 1)
+               plt.plot(list(range(10)))
+          +    plt.ylabel("hello")
+           
+               plt.subplot(3, 3, 2)
+               plt.contourf(data, hatches=['//', 'ooo'])
+          @@ -68,6 +69,7 @@ def _generate_complete_test_figure(fig_ref):
+           
+               plt.subplot(3, 3, 4)
+               plt.imshow(data)
+          +    plt.ylabel("hello\nworld!")
+           
+               plt.subplot(3, 3, 5)
+               plt.pcolor(data)
+          @@ -89,6 +91,8 @@ def _generate_complete_test_figure(fig_ref):
+               plt.subplot(3, 3, 9)
+               plt.errorbar(x, x * -0.5, xerr=0.2, yerr=0.4)
+           
+          +    fig_ref.align_ylabels()  # Test handling of _align_label_groups Groupers.
+          +
+           
+           @mpl.style.context("default")
+           @check_figures_equal(extensions=["png"])
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["lib/matplotlib/tests/test_pickle.py::test_complete[png]"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["lib/matplotlib/tests/test_pickle.py::test_simple", "lib/matplotlib/tests/test_pickle.py::test_gcf", "lib/matplotlib/tests/test_pickle.py::test_no_pyplot", "lib/matplotlib/tests/test_pickle.py::test_renderer", "lib/matplotlib/tests/test_pickle.py::test_image", "lib/matplotlib/tests/test_pickle.py::test_polar", "lib/matplotlib/tests/test_pickle.py::test_transform", "lib/matplotlib/tests/test_pickle.py::test_rrulewrapper", "lib/matplotlib/tests/test_pickle.py::test_shared", "lib/matplotlib/tests/test_pickle.py::test_inset_and_secondary", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap0]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap1]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap2]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap3]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap4]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap5]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap6]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap7]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap8]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap9]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap10]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap11]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap12]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap13]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap14]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap15]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap16]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap17]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap18]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap19]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap20]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap21]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap22]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap23]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap24]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap25]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap26]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap27]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap28]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap29]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap30]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap31]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap32]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap33]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap34]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap35]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap36]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap37]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap38]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap39]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap40]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap41]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap42]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap43]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap44]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap45]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap46]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap47]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap48]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap49]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap50]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap51]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap52]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap53]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap54]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap55]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap56]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap57]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap58]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap59]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap60]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap61]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap62]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap63]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap64]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap65]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap66]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap67]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap68]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap69]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap70]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap71]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap72]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap73]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap74]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap75]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap76]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap77]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap78]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap79]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap80]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap81]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap82]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap83]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap84]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap85]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap86]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap87]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap88]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap89]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap90]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap91]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap92]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap93]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap94]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap95]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap96]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap97]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap98]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap99]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap100]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap101]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap102]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap103]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap104]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap105]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap106]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap107]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap108]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap109]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap110]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap111]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap112]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap113]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap114]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap115]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap116]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap117]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap118]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap119]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap120]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap121]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap122]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap123]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap124]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap125]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap126]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap127]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap128]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap129]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap130]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap131]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap132]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap133]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap134]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap135]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap136]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap137]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap138]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap139]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap140]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap141]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap142]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap143]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap144]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap145]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap146]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap147]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap148]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap149]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap150]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap151]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap152]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap153]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap154]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap155]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap156]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap157]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap158]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap159]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap160]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap161]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap162]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap163]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap164]", "lib/matplotlib/tests/test_pickle.py::test_cmap[cmap165]", "lib/matplotlib/tests/test_pickle.py::test_unpickle_canvas", "lib/matplotlib/tests/test_pickle.py::test_mpl_toolkits", "lib/matplotlib/tests/test_pickle.py::test_standard_norm", "lib/matplotlib/tests/test_pickle.py::test_dynamic_norm", "lib/matplotlib/tests/test_pickle.py::test_vertexselector"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["lib/matplotlib/tests/test_pickle.py"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
