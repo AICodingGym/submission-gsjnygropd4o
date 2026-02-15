@@ -81,3 +81,8 @@ sample.tex
 
 # pytest related data file for slow tests
 .ci/durations.log
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
