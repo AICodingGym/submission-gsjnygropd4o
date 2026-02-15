@@ -1,0 +1,366 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "scikit-learn__scikit-learn-25102"
+      REPO: "scikit-learn/scikit-learn"
+      VERSION: "1.3"
+      BASE_COMMIT: "f9a1cf072da9d7375d6c2163f68a6038b13b310f"
+      ENV_SETUP_COMMIT: "1e8a5b833d1b58f3ab84099c4582239af854b23a"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'sklearn/feature_selection/tests/test_base.py sklearn/feature_selection/tests/test_feature_select.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=conda_forge
+            - _openmp_mutex=4.5=2_gnu
+            - blas=1.0=openblas
+            - bottleneck=1.4.2=py39ha9d4c09_0
+            - brotli=1.0.9=h5eee18b_8
+            - brotli-bin=1.0.9=h5eee18b_8
+            - bzip2=1.0.8=h5eee18b_6
+            - c-ares=1.19.1=h5eee18b_0
+            - ca-certificates=2024.11.26=h06a4308_0
+            - contourpy=1.3.0=py39h74842e3_2
+            - cycler=0.11.0=pyhd3eb1b0_0
+            - cyrus-sasl=2.1.28=h52b45da_1
+            - cython=3.0.7=py39h3d6467e_0
+            - dbus=1.13.18=hb2f20db_0
+            - exceptiongroup=1.2.0=py39h06a4308_0
+            - expat=2.6.4=h6a678d5_0
+            - fontconfig=2.14.1=h55d465d_3
+            - fonttools=4.51.0=py39h5eee18b_0
+            - freetype=2.12.1=h4a9f257_0
+            - glib=2.78.4=h6a678d5_0
+            - glib-tools=2.78.4=h6a678d5_0
+            - gst-plugins-base=1.14.1=h6a678d5_1
+            - gstreamer=1.14.1=h5eee18b_1
+            - icu=73.1=h6a678d5_0
+            - importlib_resources=6.4.0=py39h06a4308_0
+            - iniconfig=1.1.1=pyhd3eb1b0_0
+            - joblib=1.4.2=py39h06a4308_0
+            - jpeg=9e=h5eee18b_3
+            - kiwisolver=1.4.4=py39h6a678d5_0
+            - krb5=1.20.1=h143b758_1
+            - lcms2=2.16=hb9589c4_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - lerc=4.0.0=h6a678d5_0
+            - libabseil=20240116.2=cxx17_h6a678d5_0
+            - libblas=3.9.0=26_linux64_openblas
+            - libbrotlicommon=1.0.9=h5eee18b_8
+            - libbrotlidec=1.0.9=h5eee18b_8
+            - libbrotlienc=1.0.9=h5eee18b_8
+            - libcblas=3.9.0=26_linux64_openblas
+            - libclang=14.0.6=default_hc6dbbc7_2
+            - libclang13=14.0.6=default_he11475f_2
+            - libcups=2.4.2=h2d74bed_1
+            - libcurl=8.11.1=hc9e6f67_0
+            - libdeflate=1.22=h5eee18b_0
+            - libedit=3.1.20230828=h5eee18b_0
+            - libev=4.33=h7f8727e_1
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc=14.2.0=h77fa898_1
+            - libgcc-ng=14.2.0=h69a702a_1
+            - libgfortran-ng=8.2.0=hdf63c60_1
+            - libgfortran5=14.2.0=hd5240d6_1
+            - libglib=2.78.4=hdc74915_0
+            - libgomp=14.2.0=h77fa898_1
+            - libiconv=1.16=h5eee18b_3
+            - liblapack=3.9.0=26_linux64_openblas
+            - libllvm14=14.0.6=hecde1de_4
+            - libnghttp2=1.57.0=h2d74bed_0
+            - libopenblas=0.3.28=pthreads_h94d23a6_0
+            - libpng=1.6.39=h5eee18b_0
+            - libpq=17.2=hdbd6064_0
+            - libprotobuf=4.25.3=he621ea3_0
+            - libssh2=1.11.1=h251f7ec_0
+            - libstdcxx=14.2.0=hc0a3c3a_1
+            - libstdcxx-ng=14.2.0=h4852527_1
+            - libtiff=4.5.1=hffd6297_1
+            - libuuid=1.41.5=h5eee18b_0
+            - libwebp-base=1.3.2=h5eee18b_1
+            - libxcb=1.15=h7f8727e_0
+            - libxkbcommon=1.0.1=h097e994_2
+            - libxml2=2.13.5=hfdd30dd_0
+            - lz4-c=1.9.4=h6a678d5_1
+            - matplotlib=3.9.2=py39h06a4308_1
+            - matplotlib-base=3.9.2=py39hbfdbfaf_1
+            - mysql=8.4.0=h29a9f33_1
+            - ncurses=6.4=h6a678d5_0
+            - numexpr=2.10.1=py39hd28fd6d_0
+            - openjpeg=2.5.2=he7f1fd0_0
+            - openldap=2.6.4=h42fbc30_0
+            - openssl=3.0.15=h5eee18b_0
+            - packaging=24.2=py39h06a4308_0
+            - pandas=2.2.3=py39h6a678d5_0
+            - pcre2=10.42=hebb0a14_1
+            - pillow=11.0.0=py39hcea889d_1
+            - pip=24.2=py39h06a4308_0
+            - pluggy=1.5.0=py39h06a4308_0
+            - ply=3.11=py39h06a4308_0
+            - pyparsing=3.2.0=py39h06a4308_0
+            - pyqt=5.15.10=py39h6a678d5_0
+            - pyqt5-sip=12.13.0=py39h5eee18b_0
+            - pytest=7.4.4=py39h06a4308_0
+            - python=3.9.21=he870216_1
+            - python-dateutil=2.9.0post0=py39h06a4308_2
+            - python-tzdata=2023.3=pyhd3eb1b0_0
+            - python_abi=3.9=2_cp39
+            - pytz=2024.1=py39h06a4308_0
+            - qt-main=5.15.2=hb6262e9_11
+            - readline=8.2=h5eee18b_0
+            - scipy=1.13.0=py39haf93ffa_1
+            - setuptools=75.1.0=py39h06a4308_0
+            - sip=6.7.12=py39h6a678d5_0
+            - six=1.16.0=pyhd3eb1b0_1
+            - sqlite=3.45.3=h5eee18b_0
+            - threadpoolctl=3.5.0=py39h2f386ee_0
+            - tk=8.6.14=h39e8969_0
+            - tomli=2.0.1=py39h06a4308_0
+            - tornado=6.4.2=py39h5eee18b_0
+            - tzdata=2024b=h04d1e81_0
+            - unicodedata2=15.1.0=py39h5eee18b_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zipp=3.21.0=py39h06a4308_0
+            - zlib=1.2.13=h5eee18b_1
+            - zstd=1.5.6=hc292b87_0
+            - pip:
+                - numpy==1.26.4
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install cython setuptools numpy scipy
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -v --no-use-pep517 --no-build-isolation -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/sklearn/feature_selection/tests/test_base.py b/sklearn/feature_selection/tests/test_base.py
+          --- a/sklearn/feature_selection/tests/test_base.py
+          +++ b/sklearn/feature_selection/tests/test_base.py
+          @@ -6,23 +6,25 @@
+           
+           from sklearn.base import BaseEstimator
+           from sklearn.feature_selection._base import SelectorMixin
+          -from sklearn.utils import check_array
+           
+           
+           class StepSelector(SelectorMixin, BaseEstimator):
+          -    """Retain every `step` features (beginning with 0)"""
+          +    """Retain every `step` features (beginning with 0).
+          +
+          +    If `step < 1`, then no features are selected.
+          +    """
+           
+               def __init__(self, step=2):
+                   self.step = step
+           
+               def fit(self, X, y=None):
+          -        X = check_array(X, accept_sparse="csc")
+          -        self.n_input_feats = X.shape[1]
+          +        X = self._validate_data(X, accept_sparse="csc")
+                   return self
+           
+               def _get_support_mask(self):
+          -        mask = np.zeros(self.n_input_feats, dtype=bool)
+          -        mask[:: self.step] = True
+          +        mask = np.zeros(self.n_features_in_, dtype=bool)
+          +        if self.step >= 1:
+          +            mask[:: self.step] = True
+                   return mask
+           
+           
+          @@ -114,3 +116,36 @@ def test_get_support():
+               sel.fit(X, y)
+               assert_array_equal(support, sel.get_support())
+               assert_array_equal(support_inds, sel.get_support(indices=True))
+          +
+          +
+          +def test_output_dataframe():
+          +    """Check output dtypes for dataframes is consistent with the input dtypes."""
+          +    pd = pytest.importorskip("pandas")
+          +
+          +    X = pd.DataFrame(
+          +        {
+          +            "a": pd.Series([1.0, 2.4, 4.5], dtype=np.float32),
+          +            "b": pd.Series(["a", "b", "a"], dtype="category"),
+          +            "c": pd.Series(["j", "b", "b"], dtype="category"),
+          +            "d": pd.Series([3.0, 2.4, 1.2], dtype=np.float64),
+          +        }
+          +    )
+          +
+          +    for step in [2, 3]:
+          +        sel = StepSelector(step=step).set_output(transform="pandas")
+          +        sel.fit(X)
+          +
+          +        output = sel.transform(X)
+          +        for name, dtype in output.dtypes.items():
+          +            assert dtype == X.dtypes[name]
+          +
+          +    # step=0 will select nothing
+          +    sel0 = StepSelector(step=0).set_output(transform="pandas")
+          +    sel0.fit(X, y)
+          +
+          +    msg = "No features were selected"
+          +    with pytest.warns(UserWarning, match=msg):
+          +        output0 = sel0.transform(X)
+          +
+          +    assert_array_equal(output0.index, X.index)
+          +    assert output0.shape == (X.shape[0], 0)
+          diff --git a/sklearn/feature_selection/tests/test_feature_select.py b/sklearn/feature_selection/tests/test_feature_select.py
+          --- a/sklearn/feature_selection/tests/test_feature_select.py
+          +++ b/sklearn/feature_selection/tests/test_feature_select.py
+          @@ -15,7 +15,7 @@
+           from sklearn.utils._testing import ignore_warnings
+           from sklearn.utils import safe_mask
+           
+          -from sklearn.datasets import make_classification, make_regression
+          +from sklearn.datasets import make_classification, make_regression, load_iris
+           from sklearn.feature_selection import (
+               chi2,
+               f_classif,
+          @@ -944,3 +944,41 @@ def test_mutual_info_regression():
+               gtruth = np.zeros(10)
+               gtruth[:2] = 1
+               assert_array_equal(support, gtruth)
+          +
+          +
+          +def test_dataframe_output_dtypes():
+          +    """Check that the output datafarme dtypes are the same as the input.
+          +
+          +    Non-regression test for gh-24860.
+          +    """
+          +    pd = pytest.importorskip("pandas")
+          +
+          +    X, y = load_iris(return_X_y=True, as_frame=True)
+          +    X = X.astype(
+          +        {
+          +            "petal length (cm)": np.float32,
+          +            "petal width (cm)": np.float64,
+          +        }
+          +    )
+          +    X["petal_width_binned"] = pd.cut(X["petal width (cm)"], bins=10)
+          +
+          +    column_order = X.columns
+          +
+          +    def selector(X, y):
+          +        ranking = {
+          +            "sepal length (cm)": 1,
+          +            "sepal width (cm)": 2,
+          +            "petal length (cm)": 3,
+          +            "petal width (cm)": 4,
+          +            "petal_width_binned": 5,
+          +        }
+          +        return np.asarray([ranking[name] for name in column_order])
+          +
+          +    univariate_filter = SelectKBest(selector, k=3).set_output(transform="pandas")
+          +    output = univariate_filter.fit_transform(X, y)
+          +
+          +    assert_array_equal(
+          +        output.columns, ["petal length (cm)", "petal width (cm)", "petal_width_binned"]
+          +    )
+          +    for name, dtype in output.dtypes.items():
+          +        assert dtype == X.dtypes[name]
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["sklearn/feature_selection/tests/test_base.py::test_output_dataframe", "sklearn/feature_selection/tests/test_feature_select.py::test_dataframe_output_dtypes"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["sklearn/feature_selection/tests/test_base.py::test_transform_dense", "sklearn/feature_selection/tests/test_base.py::test_transform_sparse", "sklearn/feature_selection/tests/test_base.py::test_inverse_transform_dense", "sklearn/feature_selection/tests/test_base.py::test_inverse_transform_sparse", "sklearn/feature_selection/tests/test_base.py::test_get_support", "sklearn/feature_selection/tests/test_feature_select.py::test_f_oneway_vs_scipy_stats", "sklearn/feature_selection/tests/test_feature_select.py::test_f_oneway_ints", "sklearn/feature_selection/tests/test_feature_select.py::test_f_classif", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression[True]", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression[False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_input_dtype", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_center", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression_force_finite[X0-y0-expected_corr_coef0-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression_force_finite[X1-y1-expected_corr_coef1-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression_force_finite[X2-y2-expected_corr_coef2-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_r_regression_force_finite[X3-y3-expected_corr_coef3-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X0-y0-expected_f_statistic0-expected_p_values0-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X1-y1-expected_f_statistic1-expected_p_values1-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X2-y2-expected_f_statistic2-expected_p_values2-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X3-y3-expected_f_statistic3-expected_p_values3-True]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X4-y4-expected_f_statistic4-expected_p_values4-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X5-y5-expected_f_statistic5-expected_p_values5-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X6-y6-expected_f_statistic6-expected_p_values6-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_regression_corner_case[X7-y7-expected_f_statistic7-expected_p_values7-False]", "sklearn/feature_selection/tests/test_feature_select.py::test_f_classif_multi_class", "sklearn/feature_selection/tests/test_feature_select.py::test_select_percentile_classif", "sklearn/feature_selection/tests/test_feature_select.py::test_select_percentile_classif_sparse", "sklearn/feature_selection/tests/test_feature_select.py::test_select_kbest_classif", "sklearn/feature_selection/tests/test_feature_select.py::test_select_kbest_all", "sklearn/feature_selection/tests/test_feature_select.py::test_select_kbest_zero[float32]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_kbest_zero[float64]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_heuristics_classif", "sklearn/feature_selection/tests/test_feature_select.py::test_select_percentile_regression", "sklearn/feature_selection/tests/test_feature_select.py::test_select_percentile_regression_full", "sklearn/feature_selection/tests/test_feature_select.py::test_select_kbest_regression", "sklearn/feature_selection/tests/test_feature_select.py::test_select_heuristics_regression", "sklearn/feature_selection/tests/test_feature_select.py::test_boundary_case_ch2", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[1-0.001]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[1-0.01]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[1-0.1]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[5-0.001]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[5-0.01]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[5-0.1]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[10-0.001]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[10-0.01]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fdr_regression[10-0.1]", "sklearn/feature_selection/tests/test_feature_select.py::test_select_fwe_regression", "sklearn/feature_selection/tests/test_feature_select.py::test_selectkbest_tiebreaking", "sklearn/feature_selection/tests/test_feature_select.py::test_selectpercentile_tiebreaking", "sklearn/feature_selection/tests/test_feature_select.py::test_tied_pvalues", "sklearn/feature_selection/tests/test_feature_select.py::test_scorefunc_multilabel", "sklearn/feature_selection/tests/test_feature_select.py::test_tied_scores", "sklearn/feature_selection/tests/test_feature_select.py::test_nans", "sklearn/feature_selection/tests/test_feature_select.py::test_invalid_k", "sklearn/feature_selection/tests/test_feature_select.py::test_f_classif_constant_feature", "sklearn/feature_selection/tests/test_feature_select.py::test_no_feature_selected", "sklearn/feature_selection/tests/test_feature_select.py::test_mutual_info_classif", "sklearn/feature_selection/tests/test_feature_select.py::test_mutual_info_regression"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["sklearn/feature_selection/tests/test_base.py", "sklearn/feature_selection/tests/test_feature_select.py"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
