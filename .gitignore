@@ -80,3 +80,8 @@ sklearn/linear_model/sag_fast.pyx
 # deprecated paths
 # TODO: Remove in 0.24
 sklearn/utils/mocking.py
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
