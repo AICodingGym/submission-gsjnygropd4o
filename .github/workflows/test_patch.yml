@@ -1,0 +1,216 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-11740"
+      REPO: "django/django"
+      VERSION: "3.0"
+      BASE_COMMIT: "003bb34b218adb23d1a7e67932a6ba9b3c4dcc81"
+      ENV_SETUP_COMMIT: "419a78300f7cd27611196e1e464d50fd0385ff27"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/migrations/test_autodetector.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.6"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - certifi=2021.5.30=py36h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.3=he6710b0_2
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=1.1.1w=h7f8727e_0
+            - pip=21.2.2=py36h06a4308_0
+            - python=3.6.13=h12debd9_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=58.0.4=py36h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.37.1=pyhd3eb1b0_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohttp==3.8.6
+                - aiosignal==1.2.0
+                - argon2-cffi==21.3.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.4.1
+                - async-timeout==4.0.2
+                - asynctest==0.13.0
+                - attrs==22.2.0
+                - bcrypt==4.0.1
+                - cffi==1.15.1
+                - charset-normalizer==2.0.12
+                - dataclasses==0.8
+                - docutils==0.18.1
+                - frozenlist==1.2.0
+                - geoip2==4.6.0
+                - idna==3.10
+                - idna-ssl==1.1.0
+                - jinja2==3.0.3
+                - markupsafe==2.0.1
+                - maxminddb==2.2.0
+                - multidict==5.2.0
+                - numpy==1.19.5
+                - pillow==8.4.0
+                - pycparser==2.21
+                - pylibmc==1.6.3
+                - python-memcached==1.62
+                - pytz==2024.2
+                - pywatchman==1.4.1
+                - pyyaml==6.0.1
+                - requests==2.27.1
+                - selenium==3.141.0
+                - sqlparse==0.4.4
+                - tblib==1.7.0
+                - typing-extensions==4.1.1
+                - urllib3==1.26.20
+                - yarl==1.7.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/migrations/test_autodetector.py b/tests/migrations/test_autodetector.py
+          --- a/tests/migrations/test_autodetector.py
+          +++ b/tests/migrations/test_autodetector.py
+          @@ -352,6 +352,11 @@ class AutodetectorTests(TestCase):
+                   ("author", models.ForeignKey("migrations.UnmigratedModel", models.CASCADE)),
+                   ("title", models.CharField(max_length=200)),
+               ])
+          +    book_with_no_author_fk = ModelState("otherapp", "Book", [
+          +        ("id", models.AutoField(primary_key=True)),
+          +        ("author", models.IntegerField()),
+          +        ("title", models.CharField(max_length=200)),
+          +    ])
+               book_with_no_author = ModelState("otherapp", "Book", [
+                   ("id", models.AutoField(primary_key=True)),
+                   ("title", models.CharField(max_length=200)),
+          @@ -2251,6 +2256,15 @@ def test_fk_dependency_other_app(self):
+                   self.assertOperationAttributes(changes, 'testapp', 0, 0, name="book")
+                   self.assertMigrationDependencies(changes, 'testapp', 0, [("otherapp", "__first__")])
+           
+          +    def test_alter_field_to_fk_dependency_other_app(self):
+          +        changes = self.get_changes(
+          +            [self.author_empty, self.book_with_no_author_fk],
+          +            [self.author_empty, self.book],
+          +        )
+          +        self.assertNumberMigrations(changes, 'otherapp', 1)
+          +        self.assertOperationTypes(changes, 'otherapp', 0, ['AlterField'])
+          +        self.assertMigrationDependencies(changes, 'otherapp', 0, [('testapp', '__first__')])
+          +
+               def test_circular_dependency_mixed_addcreate(self):
+                   """
+                   #23315 - The dependency resolver knows to put all CreateModel
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+          export LANG=en_US.UTF-8
+          export LANGUAGE=en_US:en
+          export LC_ALL=en_US.UTF-8
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_alter_field_to_fk_dependency_other_app (migrations.test_autodetector.AutodetectorTests)"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_add_alter_order_with_respect_to (migrations.test_autodetector.AutodetectorTests)", "test_add_blank_textfield_and_charfield (migrations.test_autodetector.AutodetectorTests)", "Test change detection of new constraints.", "test_add_date_fields_with_auto_now_add_asking_for_default (migrations.test_autodetector.AutodetectorTests)", "test_add_date_fields_with_auto_now_add_not_asking_for_null_addition (migrations.test_autodetector.AutodetectorTests)", "test_add_date_fields_with_auto_now_not_asking_for_default (migrations.test_autodetector.AutodetectorTests)", "Tests autodetection of new fields.", "test_add_field_and_foo_together (migrations.test_autodetector.AutodetectorTests)", "#22030 - Adding a field with a default should work.", "Tests index/unique_together detection.", "Test change detection of new indexes.", "#22435 - Adding a ManyToManyField should not prompt for a default.", "test_add_model_order_with_respect_to (migrations.test_autodetector.AutodetectorTests)", "test_add_non_blank_textfield_and_charfield (migrations.test_autodetector.AutodetectorTests)", "Tests detection for adding db_table in model's options.", "Tests detection for changing db_table in model's options'.", "test_alter_db_table_no_changes (migrations.test_autodetector.AutodetectorTests)", "Tests detection for removing db_table in model's options.", "test_alter_db_table_with_model_change (migrations.test_autodetector.AutodetectorTests)", "test_alter_field_to_not_null_oneoff_default (migrations.test_autodetector.AutodetectorTests)", "test_alter_field_to_not_null_with_default (migrations.test_autodetector.AutodetectorTests)", "test_alter_field_to_not_null_without_default (migrations.test_autodetector.AutodetectorTests)", "test_alter_fk_before_model_deletion (migrations.test_autodetector.AutodetectorTests)", "test_alter_many_to_many (migrations.test_autodetector.AutodetectorTests)", "test_alter_model_managers (migrations.test_autodetector.AutodetectorTests)", "Changing a model's options should make a change.", "Changing a proxy model's options should also make a change.", "Tests auto-naming of migrations for graph matching.", "Bases of other models come first.", "test_circular_dependency_mixed_addcreate (migrations.test_autodetector.AutodetectorTests)", "test_circular_dependency_swappable (migrations.test_autodetector.AutodetectorTests)", "test_circular_dependency_swappable2 (migrations.test_autodetector.AutodetectorTests)", "test_circular_dependency_swappable_self (migrations.test_autodetector.AutodetectorTests)", "test_circular_fk_dependency (migrations.test_autodetector.AutodetectorTests)", "test_concrete_field_changed_to_many_to_many (migrations.test_autodetector.AutodetectorTests)", "test_create_model_and_unique_together (migrations.test_autodetector.AutodetectorTests)", "Test creation of new model with constraints already defined.", "Test creation of new model with indexes already defined.", "test_create_with_through_model (migrations.test_autodetector.AutodetectorTests)", "test_custom_deconstructible (migrations.test_autodetector.AutodetectorTests)", "Tests custom naming of migrations for graph matching.", "Field instances are handled correctly by nested deconstruction.", "test_deconstruct_type (migrations.test_autodetector.AutodetectorTests)", "Nested deconstruction descends into dict values.", "Nested deconstruction descends into lists.", "Nested deconstruction descends into tuples.", "test_default_related_name_option (migrations.test_autodetector.AutodetectorTests)", "test_different_regex_does_alter (migrations.test_autodetector.AutodetectorTests)", "test_empty_foo_together (migrations.test_autodetector.AutodetectorTests)", "test_first_dependency (migrations.test_autodetector.AutodetectorTests)", "Having a ForeignKey automatically adds a dependency.", "test_fk_dependency_other_app (migrations.test_autodetector.AutodetectorTests)", "test_foo_together_no_changes (migrations.test_autodetector.AutodetectorTests)", "test_foo_together_ordering (migrations.test_autodetector.AutodetectorTests)", "Tests unique_together and field removal detection & ordering", "test_foreign_key_removed_before_target_model (migrations.test_autodetector.AutodetectorTests)", "test_identical_regex_doesnt_alter (migrations.test_autodetector.AutodetectorTests)", "test_keep_db_table_with_model_change (migrations.test_autodetector.AutodetectorTests)", "test_last_dependency (migrations.test_autodetector.AutodetectorTests)", "test_m2m_w_through_multistep_remove (migrations.test_autodetector.AutodetectorTests)", "test_managed_to_unmanaged (migrations.test_autodetector.AutodetectorTests)", "test_many_to_many_changed_to_concrete_field (migrations.test_autodetector.AutodetectorTests)", "test_many_to_many_removed_before_through_model (migrations.test_autodetector.AutodetectorTests)", "test_many_to_many_removed_before_through_model_2 (migrations.test_autodetector.AutodetectorTests)", "test_mti_inheritance_model_removal (migrations.test_autodetector.AutodetectorTests)", "#23956 - Inheriting models doesn't move *_ptr fields into AddField operations.", "test_nested_deconstructible_objects (migrations.test_autodetector.AutodetectorTests)", "Tests autodetection of new models.", "test_non_circular_foreignkey_dependency_removal (migrations.test_autodetector.AutodetectorTests)", "Tests deletion of old models.", "Test change detection of reordering of fields in indexes.", "test_pk_fk_included (migrations.test_autodetector.AutodetectorTests)", "The autodetector correctly deals with proxy models.", "Bases of proxies come first.", "test_proxy_custom_pk (migrations.test_autodetector.AutodetectorTests)", "FK dependencies still work on proxy models.", "test_proxy_to_mti_with_fk_to_proxy (migrations.test_autodetector.AutodetectorTests)", "test_proxy_to_mti_with_fk_to_proxy_proxy (migrations.test_autodetector.AutodetectorTests)", "test_remove_alter_order_with_respect_to (migrations.test_autodetector.AutodetectorTests)", "Test change detection of removed constraints.", "Tests autodetection of removed fields.", "test_remove_field_and_foo_together (migrations.test_autodetector.AutodetectorTests)", "Test change detection of removed indexes.", "Tests autodetection of renamed fields.", "test_rename_field_and_foo_together (migrations.test_autodetector.AutodetectorTests)", "test_rename_field_foreign_key_to_field (migrations.test_autodetector.AutodetectorTests)", "test_rename_field_preserved_db_column (migrations.test_autodetector.AutodetectorTests)", "test_rename_foreign_object_fields (migrations.test_autodetector.AutodetectorTests)", "test_rename_m2m_through_model (migrations.test_autodetector.AutodetectorTests)", "Tests autodetection of renamed models.", "test_rename_model_reverse_relation_dependencies (migrations.test_autodetector.AutodetectorTests)", "test_rename_model_with_fks_in_different_position (migrations.test_autodetector.AutodetectorTests)", "test_rename_model_with_renamed_rel_field (migrations.test_autodetector.AutodetectorTests)", "test_rename_related_field_preserved_db_column (migrations.test_autodetector.AutodetectorTests)", "test_replace_string_with_foreignkey (migrations.test_autodetector.AutodetectorTests)", "test_same_app_circular_fk_dependency (migrations.test_autodetector.AutodetectorTests)", "test_same_app_circular_fk_dependency_with_unique_together_and_indexes (migrations.test_autodetector.AutodetectorTests)", "test_same_app_no_fk_dependency (migrations.test_autodetector.AutodetectorTests)", "Setting order_with_respect_to adds a field.", "test_supports_functools_partial (migrations.test_autodetector.AutodetectorTests)", "test_swappable (migrations.test_autodetector.AutodetectorTests)", "test_swappable_changed (migrations.test_autodetector.AutodetectorTests)", "test_swappable_circular_multi_mti (migrations.test_autodetector.AutodetectorTests)", "Swappable models get their CreateModel first.", "test_trim_apps (migrations.test_autodetector.AutodetectorTests)", "The autodetector correctly deals with managed models.", "test_unmanaged_custom_pk (migrations.test_autodetector.AutodetectorTests)", "test_unmanaged_delete (migrations.test_autodetector.AutodetectorTests)", "test_unmanaged_to_managed (migrations.test_autodetector.AutodetectorTests)"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["migrations.test_autodetector"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
