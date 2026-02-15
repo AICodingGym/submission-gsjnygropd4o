@@ -1,0 +1,243 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-12663"
+      REPO: "django/django"
+      VERSION: "3.1"
+      BASE_COMMIT: "fa5e7e46d875d4143510944f19d79df7b1739bab"
+      ENV_SETUP_COMMIT: "0668164b4ac93a5be79f5b87fae83c657124d9ab"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/expressions/models.py tests/expressions/tests.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.6"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - certifi=2021.5.30=py36h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.3=he6710b0_2
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=1.1.1w=h7f8727e_0
+            - pip=21.2.2=py36h06a4308_0
+            - python=3.6.13=h12debd9_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=58.0.4=py36h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.37.1=pyhd3eb1b0_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohttp==3.8.6
+                - aiosignal==1.2.0
+                - argon2-cffi==21.3.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.4.1
+                - async-timeout==4.0.2
+                - asynctest==0.13.0
+                - attrs==22.2.0
+                - bcrypt==4.0.1
+                - cffi==1.15.1
+                - charset-normalizer==2.0.12
+                - dataclasses==0.8
+                - docutils==0.18.1
+                - frozenlist==1.2.0
+                - geoip2==4.6.0
+                - idna==3.10
+                - idna-ssl==1.1.0
+                - jinja2==3.0.3
+                - markupsafe==2.0.1
+                - maxminddb==2.2.0
+                - multidict==5.2.0
+                - numpy==1.19.5
+                - pillow==8.4.0
+                - pycparser==2.21
+                - pylibmc==1.6.3
+                - python-memcached==1.62
+                - pytz==2024.2
+                - pywatchman==1.4.1
+                - pyyaml==6.0.1
+                - requests==2.27.1
+                - selenium==3.141.0
+                - sqlparse==0.4.4
+                - tblib==1.7.0
+                - typing-extensions==4.1.1
+                - urllib3==1.26.20
+                - yarl==1.7.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/expressions/models.py b/tests/expressions/models.py
+          --- a/tests/expressions/models.py
+          +++ b/tests/expressions/models.py
+          @@ -6,10 +6,15 @@
+           from django.db import models
+           
+           
+          +class Manager(models.Model):
+          +    name = models.CharField(max_length=50)
+          +
+          +
+           class Employee(models.Model):
+               firstname = models.CharField(max_length=50)
+               lastname = models.CharField(max_length=50)
+               salary = models.IntegerField(blank=True, null=True)
+          +    manager = models.ForeignKey(Manager, models.CASCADE, null=True)
+           
+               def __str__(self):
+                   return '%s %s' % (self.firstname, self.lastname)
+          diff --git a/tests/expressions/tests.py b/tests/expressions/tests.py
+          --- a/tests/expressions/tests.py
+          +++ b/tests/expressions/tests.py
+          @@ -21,10 +21,11 @@
+           from django.db.models.sql.datastructures import Join
+           from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
+           from django.test.utils import Approximate, isolate_apps
+          +from django.utils.functional import SimpleLazyObject
+           
+           from .models import (
+          -    UUID, UUIDPK, Company, Employee, Experiment, Number, RemoteEmployee,
+          -    Result, SimulationRun, Time,
+          +    UUID, UUIDPK, Company, Employee, Experiment, Manager, Number,
+          +    RemoteEmployee, Result, SimulationRun, Time,
+           )
+           
+           
+          @@ -608,6 +609,21 @@ def test_subquery_filter_by_aggregate(self):
+                   )
+                   self.assertEqual(qs.get().float, 1.2)
+           
+          +    def test_subquery_filter_by_lazy(self):
+          +        self.max.manager = Manager.objects.create(name='Manager')
+          +        self.max.save()
+          +        max_manager = SimpleLazyObject(
+          +            lambda: Manager.objects.get(pk=self.max.manager.pk)
+          +        )
+          +        qs = Company.objects.annotate(
+          +            ceo_manager=Subquery(
+          +                Employee.objects.filter(
+          +                    lastname=OuterRef('ceo__lastname'),
+          +                ).values('manager'),
+          +            ),
+          +        ).filter(ceo_manager=max_manager)
+          +        self.assertEqual(qs.get(), self.gmbh)
+          +
+               def test_aggregate_subquery_annotation(self):
+                   with self.assertNumQueries(1) as ctx:
+                       aggregate = Company.objects.annotate(
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+          export LANG=en_US.UTF-8
+          export LANGUAGE=en_US:en
+          export LC_ALL=en_US.UTF-8
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_subquery_filter_by_lazy (expressions.tests.BasicExpressionsTests)"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_and (expressions.tests.CombinableTests)", "test_negation (expressions.tests.CombinableTests)", "test_or (expressions.tests.CombinableTests)", "test_reversed_and (expressions.tests.CombinableTests)", "test_reversed_or (expressions.tests.CombinableTests)", "test_deconstruct (expressions.tests.FTests)", "test_deepcopy (expressions.tests.FTests)", "test_equal (expressions.tests.FTests)", "test_hash (expressions.tests.FTests)", "test_not_equal_Value (expressions.tests.FTests)", "test_complex_expressions (expressions.tests.ExpressionsNumericTests)", "test_fill_with_value_from_same_object (expressions.tests.ExpressionsNumericTests)", "test_filter_not_equals_other_field (expressions.tests.ExpressionsNumericTests)", "test_increment_value (expressions.tests.ExpressionsNumericTests)", "test_aggregates (expressions.tests.ReprTests)", "test_distinct_aggregates (expressions.tests.ReprTests)", "test_expressions (expressions.tests.ReprTests)", "test_filtered_aggregates (expressions.tests.ReprTests)", "test_functions (expressions.tests.ReprTests)", "test_month_aggregation (expressions.tests.FieldTransformTests)", "test_multiple_transforms_in_values (expressions.tests.FieldTransformTests)", "test_transform_in_values (expressions.tests.FieldTransformTests)", "test_equal (expressions.tests.SimpleExpressionTests)", "test_hash (expressions.tests.SimpleExpressionTests)", "test_complex_expressions_do_not_introduce_sql_injection_via_untrusted_string_inclusion (expressions.tests.IterableLookupInnerExpressionsTests)", "test_expressions_in_lookups_join_choice (expressions.tests.IterableLookupInnerExpressionsTests)", "test_in_lookup_allows_F_expressions_and_expressions_for_datetimes (expressions.tests.IterableLookupInnerExpressionsTests)", "test_in_lookup_allows_F_expressions_and_expressions_for_integers (expressions.tests.IterableLookupInnerExpressionsTests)", "test_range_lookup_allows_F_expressions_and_expressions_for_integers (expressions.tests.IterableLookupInnerExpressionsTests)", "test_deconstruct (expressions.tests.ValueTests)", "test_deconstruct_output_field (expressions.tests.ValueTests)", "test_equal (expressions.tests.ValueTests)", "test_equal_output_field (expressions.tests.ValueTests)", "test_hash (expressions.tests.ValueTests)", "test_raise_empty_expressionlist (expressions.tests.ValueTests)", "test_update_TimeField_using_Value (expressions.tests.ValueTests)", "test_update_UUIDField_using_Value (expressions.tests.ValueTests)", "test_F_reuse (expressions.tests.ExpressionsTests)", "test_insensitive_patterns_escape (expressions.tests.ExpressionsTests)", "test_patterns_escape (expressions.tests.ExpressionsTests)", "test_lefthand_addition (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_and (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_left_shift_operator (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_or (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_right_shift_operator (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_xor (expressions.tests.ExpressionOperatorTests)", "test_lefthand_bitwise_xor_null (expressions.tests.ExpressionOperatorTests)", "test_lefthand_division (expressions.tests.ExpressionOperatorTests)", "test_lefthand_modulo (expressions.tests.ExpressionOperatorTests)", "test_lefthand_multiplication (expressions.tests.ExpressionOperatorTests)", "test_lefthand_power (expressions.tests.ExpressionOperatorTests)", "test_lefthand_subtraction (expressions.tests.ExpressionOperatorTests)", "test_right_hand_addition (expressions.tests.ExpressionOperatorTests)", "test_right_hand_division (expressions.tests.ExpressionOperatorTests)", "test_right_hand_modulo (expressions.tests.ExpressionOperatorTests)", "test_right_hand_multiplication (expressions.tests.ExpressionOperatorTests)", "test_right_hand_subtraction (expressions.tests.ExpressionOperatorTests)", "test_righthand_power (expressions.tests.ExpressionOperatorTests)", "test_date_case_subtraction (expressions.tests.FTimeDeltaTests)", "test_date_comparison (expressions.tests.FTimeDeltaTests)", "test_date_minus_duration (expressions.tests.FTimeDeltaTests)", "test_date_subquery_subtraction (expressions.tests.FTimeDeltaTests)", "test_date_subtraction (expressions.tests.FTimeDeltaTests)", "test_datetime_subquery_subtraction (expressions.tests.FTimeDeltaTests)", "test_datetime_subtraction (expressions.tests.FTimeDeltaTests)", "test_datetime_subtraction_microseconds (expressions.tests.FTimeDeltaTests)", "test_delta_add (expressions.tests.FTimeDeltaTests)", "test_delta_subtract (expressions.tests.FTimeDeltaTests)", "test_delta_update (expressions.tests.FTimeDeltaTests)", "test_duration_with_datetime (expressions.tests.FTimeDeltaTests)", "test_duration_with_datetime_microseconds (expressions.tests.FTimeDeltaTests)", "test_durationfield_add (expressions.tests.FTimeDeltaTests)", "test_exclude (expressions.tests.FTimeDeltaTests)", "test_invalid_operator (expressions.tests.FTimeDeltaTests)", "test_mixed_comparisons2 (expressions.tests.FTimeDeltaTests)", "test_multiple_query_compilation (expressions.tests.FTimeDeltaTests)", "test_negative_timedelta_update (expressions.tests.FTimeDeltaTests)", "test_query_clone (expressions.tests.FTimeDeltaTests)", "test_time_subquery_subtraction (expressions.tests.FTimeDeltaTests)", "test_time_subtraction (expressions.tests.FTimeDeltaTests)", "test_aggregate_subquery_annotation (expressions.tests.BasicExpressionsTests)", "test_annotate_values_aggregate (expressions.tests.BasicExpressionsTests)", "test_annotate_values_count (expressions.tests.BasicExpressionsTests)", "test_annotate_values_filter (expressions.tests.BasicExpressionsTests)", "test_annotation_with_outerref (expressions.tests.BasicExpressionsTests)", "test_annotations_within_subquery (expressions.tests.BasicExpressionsTests)", "test_arithmetic (expressions.tests.BasicExpressionsTests)", "test_boolean_expression_combined (expressions.tests.BasicExpressionsTests)", "test_case_in_filter_if_boolean_output_field (expressions.tests.BasicExpressionsTests)", "test_exist_single_field_output_field (expressions.tests.BasicExpressionsTests)", "test_exists_in_filter (expressions.tests.BasicExpressionsTests)", "test_explicit_output_field (expressions.tests.BasicExpressionsTests)", "test_filter_inter_attribute (expressions.tests.BasicExpressionsTests)", "test_filter_with_join (expressions.tests.BasicExpressionsTests)", "test_filtering_on_annotate_that_uses_q (expressions.tests.BasicExpressionsTests)", "test_filtering_on_q_that_is_boolean (expressions.tests.BasicExpressionsTests)", "test_filtering_on_rawsql_that_is_boolean (expressions.tests.BasicExpressionsTests)", "test_in_subquery (expressions.tests.BasicExpressionsTests)", "test_incorrect_field_in_F_expression (expressions.tests.BasicExpressionsTests)", "test_incorrect_joined_field_in_F_expression (expressions.tests.BasicExpressionsTests)", "test_nested_outerref_with_function (expressions.tests.BasicExpressionsTests)", "test_nested_subquery (expressions.tests.BasicExpressionsTests)", "test_nested_subquery_join_outer_ref (expressions.tests.BasicExpressionsTests)", "test_nested_subquery_outer_ref_2 (expressions.tests.BasicExpressionsTests)", "test_nested_subquery_outer_ref_with_autofield (expressions.tests.BasicExpressionsTests)", "test_new_object_create (expressions.tests.BasicExpressionsTests)", "test_new_object_save (expressions.tests.BasicExpressionsTests)", "test_object_create_with_aggregate (expressions.tests.BasicExpressionsTests)", "test_object_update (expressions.tests.BasicExpressionsTests)", "test_object_update_fk (expressions.tests.BasicExpressionsTests)", "test_object_update_unsaved_objects (expressions.tests.BasicExpressionsTests)", "test_order_by_exists (expressions.tests.BasicExpressionsTests)", "test_order_by_multiline_sql (expressions.tests.BasicExpressionsTests)", "test_order_of_operations (expressions.tests.BasicExpressionsTests)", "test_outerref (expressions.tests.BasicExpressionsTests)", "test_outerref_mixed_case_table_name (expressions.tests.BasicExpressionsTests)", "test_outerref_with_operator (expressions.tests.BasicExpressionsTests)", "test_parenthesis_priority (expressions.tests.BasicExpressionsTests)", "test_pickle_expression (expressions.tests.BasicExpressionsTests)", "test_subquery (expressions.tests.BasicExpressionsTests)", "test_subquery_filter_by_aggregate (expressions.tests.BasicExpressionsTests)", "test_subquery_group_by_outerref_in_filter (expressions.tests.BasicExpressionsTests)", "test_subquery_in_filter (expressions.tests.BasicExpressionsTests)", "test_subquery_references_joined_table_twice (expressions.tests.BasicExpressionsTests)", "test_ticket_11722_iexact_lookup (expressions.tests.BasicExpressionsTests)", "test_ticket_16731_startswith_lookup (expressions.tests.BasicExpressionsTests)", "test_ticket_18375_chained_filters (expressions.tests.BasicExpressionsTests)", "test_ticket_18375_join_reuse (expressions.tests.BasicExpressionsTests)", "test_ticket_18375_kwarg_ordering (expressions.tests.BasicExpressionsTests)", "test_ticket_18375_kwarg_ordering_2 (expressions.tests.BasicExpressionsTests)", "test_update (expressions.tests.BasicExpressionsTests)", "test_update_inherited_field_value (expressions.tests.BasicExpressionsTests)", "test_update_with_fk (expressions.tests.BasicExpressionsTests)", "test_update_with_none (expressions.tests.BasicExpressionsTests)", "test_uuid_pk_subquery (expressions.tests.BasicExpressionsTests)"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["expressions.models", "expressions.tests"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
