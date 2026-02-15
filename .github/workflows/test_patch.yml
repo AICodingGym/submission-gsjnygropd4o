@@ -1,0 +1,229 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-15741"
+      REPO: "django/django"
+      VERSION: "4.2"
+      BASE_COMMIT: "8c0886b068ba4e224dd78104b93c9638b860b398"
+      ENV_SETUP_COMMIT: "0fbdb9784da915fce5dcc1fe82bac9b4785749e5"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/i18n/tests.py tests/template_tests/filter_tests/test_date.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohappyeyeballs==2.4.3
+                - aiohttp==3.10.9
+                - aiosignal==1.3.1
+                - aiosmtpd==1.4.6
+                - argon2-cffi==23.1.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.8.1
+                - async-timeout==4.0.3
+                - atpublic==5.0
+                - attrs==24.2.0
+                - bcrypt==4.2.0
+                - black==24.10.0
+                - certifi==2024.8.30
+                - cffi==1.17.1
+                - charset-normalizer==3.4.0
+                - click==8.1.7
+                - docutils==0.21.2
+                - exceptiongroup==1.2.2
+                - frozenlist==1.4.1
+                - geoip2==4.8.0
+                - h11==0.14.0
+                - idna==3.10
+                - jinja2==3.1.4
+                - markupsafe==3.0.1
+                - maxminddb==2.6.2
+                - multidict==6.1.0
+                - mypy-extensions==1.0.0
+                - numpy==2.0.2
+                - outcome==1.3.0.post0
+                - packaging==24.1
+                - pathspec==0.12.1
+                - pillow==10.4.0
+                - platformdirs==4.3.6
+                - propcache==0.2.0
+                - pycparser==2.22
+                - pylibmc==1.6.3
+                - pymemcache==4.0.0
+                - pysocks==1.7.1
+                - pytz==2024.2
+                - pywatchman==2.0.0
+                - pyyaml==6.0.2
+                - redis==5.1.1
+                - requests==2.32.3
+                - selenium==4.25.0
+                - sniffio==1.3.1
+                - sortedcontainers==2.4.0
+                - sqlparse==0.5.1
+                - tblib==3.0.0
+                - tomli==2.0.2
+                - trio==0.26.2
+                - trio-websocket==0.11.1
+                - typing-extensions==4.12.2
+                - tzdata==2024.2
+                - urllib3==2.2.3
+                - websocket-client==1.8.0
+                - wsproto==1.2.0
+                - yarl==1.14.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/i18n/tests.py b/tests/i18n/tests.py
+          --- a/tests/i18n/tests.py
+          +++ b/tests/i18n/tests.py
+          @@ -1518,6 +1518,9 @@ def test_get_format_modules_lang(self):
+                   with translation.override("de", deactivate=True):
+                       self.assertEqual(".", get_format("DECIMAL_SEPARATOR", lang="en"))
+           
+          +    def test_get_format_lazy_format(self):
+          +        self.assertEqual(get_format(gettext_lazy("DATE_FORMAT")), "N j, Y")
+          +
+               def test_localize_templatetag_and_filter(self):
+                   """
+                   Test the {% localize %} templatetag and the localize/unlocalize filters.
+          diff --git a/tests/template_tests/filter_tests/test_date.py b/tests/template_tests/filter_tests/test_date.py
+          --- a/tests/template_tests/filter_tests/test_date.py
+          +++ b/tests/template_tests/filter_tests/test_date.py
+          @@ -72,6 +72,11 @@ def test_date09(self):
+                   output = self.engine.render_to_string("date09", {"t": time(0, 0)})
+                   self.assertEqual(output, "00:00")
+           
+          +    @setup({"datelazy": '{{ t|date:_("H:i") }}'})
+          +    def test_date_lazy(self):
+          +        output = self.engine.render_to_string("datelazy", {"t": time(0, 0)})
+          +        self.assertEqual(output, "00:00")
+          +
+           
+           class FunctionTests(SimpleTestCase):
+               def test_date(self):
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_date_lazy (template_tests.filter_tests.test_date.DateTests)", "test_get_format_lazy_format (i18n.tests.FormattingTests)"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_lazy (i18n.tests.TestModels)", "test_safestr (i18n.tests.TestModels)", "get_language_info return the first fallback language info if the lang_info", "test_localized_language_info (i18n.tests.TestLanguageInfo)", "test_unknown_language_code (i18n.tests.TestLanguageInfo)", "test_unknown_language_code_and_country_code (i18n.tests.TestLanguageInfo)", "test_unknown_only_country_code (i18n.tests.TestLanguageInfo)", "test_check_for_language (i18n.tests.CountrySpecificLanguageTests)", "test_check_for_language_null (i18n.tests.CountrySpecificLanguageTests)", "test_get_language_from_request (i18n.tests.CountrySpecificLanguageTests)", "test_get_language_from_request_null (i18n.tests.CountrySpecificLanguageTests)", "test_specific_language_codes (i18n.tests.CountrySpecificLanguageTests)", "test_ignores_non_mo_files (i18n.tests.TranslationFileChangedTests)", "test_resets_cache_with_mo_files (i18n.tests.TranslationFileChangedTests)", "test_django_fallback (i18n.tests.DjangoFallbackResolutionOrderI18NTests)", "test_round_away_from_one (i18n.tests.UtilsTests)", "OSError is raised if the default language is unparseable.", "test_check_for_language (i18n.tests.NonDjangoLanguageTests)", "test_non_django_language (i18n.tests.NonDjangoLanguageTests)", "test_plural_non_django_language (i18n.tests.NonDjangoLanguageTests)", "test_locale_paths_override_app_translation (i18n.tests.LocalePathsResolutionOrderI18NTests)", "test_locale_paths_translation (i18n.tests.LocalePathsResolutionOrderI18NTests)", "test_app_translation (i18n.tests.AppResolutionOrderI18NTests)", "test_bug14894_translation_activate_thread_safety (i18n.tests.TranslationThreadSafetyTests)", "After setting LANGUAGE, the cache should be cleared and languages", "With a non-English LANGUAGE_CODE and if the active language is English", "test_get_language_from_path_null (i18n.tests.MiscTests)", "test_get_language_from_path_real (i18n.tests.MiscTests)", "test_get_supported_language_variant_null (i18n.tests.MiscTests)", "test_get_supported_language_variant_real (i18n.tests.MiscTests)", "test_i18n_patterns_returns_list (i18n.tests.MiscTests)", "Now test that we parse language preferences stored in a cookie correctly.", "Now test that we parse a literal HTTP header correctly.", "Testing HTTP header parsing. First, we test that we can parse the", "Some languages may have special fallbacks that don't follow the simple", "Subsequent language codes should be used when the language code is not", "Some browsers (Firefox, IE, etc.) use deprecated language codes. As these", "Untranslated strings for territorial language variants use the", "test_streaming_response (i18n.tests.LocaleMiddlewareTests)", "test_i18n_app_dirs (i18n.tests.WatchForTranslationChangesTests)", "test_i18n_app_dirs_ignore_django_apps (i18n.tests.WatchForTranslationChangesTests)", "test_i18n_disabled (i18n.tests.WatchForTranslationChangesTests)", "test_i18n_enabled (i18n.tests.WatchForTranslationChangesTests)", "test_i18n_local_locale (i18n.tests.WatchForTranslationChangesTests)", "test_i18n_locale_paths (i18n.tests.WatchForTranslationChangesTests)", "test_date (template_tests.filter_tests.test_date.FunctionTests)", "test_escape_characters (template_tests.filter_tests.test_date.FunctionTests)", "test_no_args (template_tests.filter_tests.test_date.FunctionTests)", "\"loading_app\" does not have translations for all languages provided by", "With i18n_patterns(..., prefix_default_language=False), the default", "A request for a nonexistent URL shouldn't cause a redirect to", "test_other_lang_with_prefix (i18n.tests.UnprefixedDefaultLanguageTests)", "test_page_with_dash (i18n.tests.UnprefixedDefaultLanguageTests)", "test_unprefixed_language_other_than_accept_language (i18n.tests.UnprefixedDefaultLanguageTests)", "test_date01 (template_tests.filter_tests.test_date.DateTests)", "test_date02 (template_tests.filter_tests.test_date.DateTests)", "Without arg, the active language's DATE_FORMAT is used.", "#9520: Make sure |date doesn't blow up on non-dates", "test_date04 (template_tests.filter_tests.test_date.DateTests)", "test_date05 (template_tests.filter_tests.test_date.DateTests)", "test_date06 (template_tests.filter_tests.test_date.DateTests)", "test_date07 (template_tests.filter_tests.test_date.DateTests)", "test_date08 (template_tests.filter_tests.test_date.DateTests)", "test_date09 (template_tests.filter_tests.test_date.DateTests)", "Empty value must stay empty after being translated (#23196).", "test_language_bidi (i18n.tests.TranslationTests)", "test_language_bidi_null (i18n.tests.TranslationTests)", "Format string interpolation should work with *_lazy objects.", "test_lazy_pickle (i18n.tests.TranslationTests)", "Translations on files with Mac or DOS end of lines will be converted", "Normally, French has 2 plurals. As other/locale/fr/LC_MESSAGES/django.po", "test_ngettext_lazy (i18n.tests.TranslationTests)", "test_ngettext_lazy_bool (i18n.tests.TranslationTests)", "test_ngettext_lazy_format_style (i18n.tests.TranslationTests)", "test_ngettext_lazy_pickle (i18n.tests.TranslationTests)", "test_override (i18n.tests.TranslationTests)", "test_override_decorator (i18n.tests.TranslationTests)", "The language restored is the one used when the function was", "test_pgettext (i18n.tests.TranslationTests)", "Test plurals with ngettext. French differs from English in that 0 is singular.", "test_plural_null (i18n.tests.TranslationTests)", "Translating a string requiring no auto-escaping with gettext or pgettext", "test_to_language (i18n.tests.TranslationTests)", "test_to_locale (i18n.tests.TranslationTests)", "The first input format for DATE_INPUT_FORMATS, TIME_INPUT_FORMATS, and", "test_all_format_strings (i18n.tests.FormattingTests)", "The active locale's formats take precedence over the default settings", "test_format_arbitrary_settings (i18n.tests.FormattingTests)", "test_get_custom_format (i18n.tests.FormattingTests)", "test_get_format_modules_lang (i18n.tests.FormattingTests)", "Tests the iter_format_modules function.", "Tests the iter_format_modules function always yields format modules in", "Catalan locale with format i18n disabled translations will be used,", "test_l10n_enabled (i18n.tests.FormattingTests)", "Localization of numbers", "Test the {% localize %} templatetag and the localize/unlocalize filters.", "Form input with 'as_hidden' or 'as_text' is correctly localized.", "Tests if form input is correctly localized", "test_localized_input_func (i18n.tests.FormattingTests)", "A string representation is returned for unlocalized numbers.", "Tests django.utils.formats.sanitize_separators.", "test_sanitize_strftime_format (i18n.tests.FormattingTests)", "test_sanitize_strftime_format_with_escaped_percent (i18n.tests.FormattingTests)", "Check if sublocales fall back to the main locale"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["i18n.tests", "template_tests.filter_tests.test_date"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
