@@ -1,0 +1,426 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "pydata__xarray-6599"
+      REPO: "pydata/xarray"
+      VERSION: "2022.03"
+      BASE_COMMIT: "6bb2b855498b5c68d7cca8cceb710365d58e6048"
+      ENV_SETUP_COMMIT: "d7931f9014a26e712ff5f30c4082cf0261f045d3"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'xarray/tests/test_computation.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.10"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=conda_forge
+            - _openmp_mutex=4.5=2_gnu
+            - affine=2.4.0=pyhd8ed1ab_1
+            - aiobotocore=2.16.1=pyhd8ed1ab_0
+            - aiohappyeyeballs=2.4.4=pyhd8ed1ab_1
+            - aiohttp=3.11.11=py310h89163eb_0
+            - aioitertools=0.12.0=pyhd8ed1ab_1
+            - aiosignal=1.3.2=pyhd8ed1ab_0
+            - aom=3.9.1=hac33072_0
+            - asciitree=0.3.3=py_2
+            - async-timeout=5.0.1=pyhd8ed1ab_1
+            - attrs=24.3.0=pyh71513ae_0
+            - blosc=1.21.6=he440d0b_1
+            - boto3=1.35.88=pyhd8ed1ab_0
+            - botocore=1.35.88=pyge310_1234567_0
+            - bottleneck=1.4.2=py310hf462985_0
+            - brotli=1.1.0=hb9d3cd8_2
+            - brotli-bin=1.1.0=hb9d3cd8_2
+            - brotli-python=1.1.0=py310hf71b8c6_2
+            - bzip2=1.0.8=h4bc722e_7
+            - c-ares=1.34.4=hb9d3cd8_0
+            - ca-certificates=2024.12.14=hbcca054_0
+            - cached-property=1.5.2=hd8ed1ab_1
+            - cached_property=1.5.2=pyha770c72_1
+            - cartopy=0.24.0=py310h5eaa309_0
+            - cdat_info=8.2.1=pyhd8ed1ab_3
+            - cdms2=3.1.5=py310h4f3777b_25
+            - cdtime=3.1.4=py310h7a088e3_13
+            - certifi=2024.12.14=pyhd8ed1ab_0
+            - cf-units=3.3.0=py310hf462985_0
+            - cffi=1.17.1=py310h8deb56e_0
+            - cfgrib=0.9.15.0=pyhd8ed1ab_0
+            - cfgv=3.3.1=pyhd8ed1ab_1
+            - cftime=1.6.4=py310hf462985_1
+            - charset-normalizer=3.4.1=pyhd8ed1ab_0
+            - click=8.1.8=pyh707e725_0
+            - click-plugins=1.1.1=pyhd8ed1ab_1
+            - cligj=0.7.2=pyhd8ed1ab_2
+            - cloudpickle=3.1.0=pyhd8ed1ab_2
+            - colorama=0.4.6=pyhd8ed1ab_1
+            - contourpy=1.3.1=py310h3788b33_0
+            - coverage=7.6.10=py310h89163eb_0
+            - curl=8.11.1=h332b0f4_0
+            - cycler=0.12.1=pyhd8ed1ab_1
+            - cytoolz=1.0.1=py310ha75aee5_0
+            - dav1d=1.2.1=hd590300_0
+            - distarray=2.12.2=pyh3866b66_5
+            - distlib=0.3.9=pyhd8ed1ab_1
+            - distributed=2024.12.1=pyhd8ed1ab_0
+            - eccodes=2.39.0=hf413ef6_1
+            - esmf=8.7.0=nompi_h6063b07_1
+            - esmpy=8.7.0=pyhecae5ae_1
+            - exceptiongroup=1.2.2=pyhd8ed1ab_1
+            - execnet=2.1.1=pyhd8ed1ab_1
+            - fasteners=0.19=pyhd8ed1ab_1
+            - filelock=3.16.1=pyhd8ed1ab_1
+            - findlibs=0.0.5=pyhd8ed1ab_0
+            - flexcache=0.3=pyhd8ed1ab_1
+            - flexparser=0.4=pyhd8ed1ab_1
+            - flox=0.9.15=pyhd8ed1ab_1
+            - fonttools=4.55.3=py310h89163eb_1
+            - freeglut=3.2.2=ha6d2627_3
+            - freetype=2.12.1=h267a509_2
+            - freexl=2.0.0=h9dce30a_2
+            - frozenlist=1.5.0=py310ha75aee5_0
+            - fsspec=2024.12.0=pyhd8ed1ab_0
+            - future=1.0.0=pyhd8ed1ab_1
+            - g2clib=1.9.0=ha770c72_1
+            - geos=3.13.0=h5888daf_0
+            - geotiff=1.7.3=h77b800c_3
+            - giflib=5.2.2=hd590300_0
+            - h2=4.1.0=pyhd8ed1ab_1
+            - h5netcdf=1.4.1=pyhd8ed1ab_1
+            - h5py=3.12.1=nompi_py310hacc6608_103
+            - hdf4=4.2.15=h2a13503_7
+            - hdf5=1.14.4=nompi_h2d575fe_105
+            - hpack=4.0.0=pyhd8ed1ab_1
+            - hyperframe=6.0.1=pyhd8ed1ab_1
+            - hypothesis=6.123.2=pyha770c72_0
+            - icu=75.1=he02047a_0
+            - identify=2.6.4=pyhd8ed1ab_0
+            - idna=3.10=pyhd8ed1ab_1
+            - importlib-metadata=8.5.0=pyha770c72_1
+            - importlib_resources=6.4.5=pyhd8ed1ab_1
+            - iniconfig=2.0.0=pyhd8ed1ab_1
+            - iris=3.11.0=pyha770c72_0
+            - jasper=4.2.4=h536e39c_0
+            - jinja2=3.1.5=pyhd8ed1ab_0
+            - jmespath=1.0.1=pyhd8ed1ab_1
+            - json-c=0.18=h6688a6e_0
+            - jsonschema=4.23.0=pyhd8ed1ab_1
+            - jsonschema-specifications=2024.10.1=pyhd8ed1ab_1
+            - jupyter_core=5.7.2=pyh31011fe_1
+            - keyutils=1.6.1=h166bdaf_0
+            - kiwisolver=1.4.7=py310h3788b33_0
+            - krb5=1.21.3=h659f571_0
+            - lazy-object-proxy=1.10.0=py310h2372a71_0
+            - lcms2=2.16=hb7c19ff_0
+            - ld_impl_linux-64=2.43=h712a8e2_2
+            - lerc=4.0.0=h27087fc_0
+            - libaec=1.1.3=h59595ed_0
+            - libarchive=3.7.7=h4585015_3
+            - libavif16=1.1.1=h1909e37_2
+            - libblas=3.9.0=26_linux64_openblas
+            - libbrotlicommon=1.1.0=hb9d3cd8_2
+            - libbrotlidec=1.1.0=hb9d3cd8_2
+            - libbrotlienc=1.1.0=hb9d3cd8_2
+            - libcblas=3.9.0=26_linux64_openblas
+            - libcdms=3.1.2=had6e27f_131
+            - libcf=1.0.3=py310h1588dd5_117
+            - libcurl=8.11.1=h332b0f4_0
+            - libde265=1.0.15=h00ab1b0_0
+            - libdeflate=1.23=h4ddbbb0_0
+            - libdrm=2.4.124=hb9d3cd8_0
+            - libedit=3.1.20191231=he28a2e2_2
+            - libegl=1.7.0=ha4b6fd6_2
+            - libev=4.33=hd590300_2
+            - libexpat=2.6.4=h5888daf_0
+            - libffi=3.4.2=h7f98852_5
+            - libgcc=14.2.0=h77fa898_1
+            - libgcc-ng=14.2.0=h69a702a_1
+            - libgdal-core=3.10.0=h3359108_13
+            - libgfortran=14.2.0=h69a702a_1
+            - libgfortran-ng=14.2.0=h69a702a_1
+            - libgfortran5=14.2.0=hd5240d6_1
+            - libgl=1.7.0=ha4b6fd6_2
+            - libglu=9.0.3=h03adeef_0
+            - libglvnd=1.7.0=ha4b6fd6_2
+            - libglx=1.7.0=ha4b6fd6_2
+            - libgomp=14.2.0=h77fa898_1
+            - libheif=1.19.5=gpl_hc21c24c_100
+            - libiconv=1.17=hd590300_2
+            - libjpeg-turbo=3.0.0=hd590300_1
+            - libkml=1.3.0=hf539b9f_1021
+            - liblapack=3.9.0=26_linux64_openblas
+            - libllvm14=14.0.6=hcd5def8_4
+            - liblzma=5.6.3=hb9d3cd8_1
+            - libnetcdf=4.9.2=nompi_h5ddbaa4_116
+            - libnghttp2=1.64.0=h161d5f1_0
+            - libnsl=2.0.1=hd590300_0
+            - libopenblas=0.3.28=pthreads_h94d23a6_1
+            - libpciaccess=0.18=hd590300_0
+            - libpng=1.6.44=hadc24fc_0
+            - librttopo=1.1.0=h97f6797_17
+            - libspatialite=5.1.0=h1b4f908_12
+            - libsqlite=3.47.2=hee588c1_0
+            - libssh2=1.11.1=hf672d98_0
+            - libstdcxx=14.2.0=hc0a3c3a_1
+            - libstdcxx-ng=14.2.0=h4852527_1
+            - libtiff=4.7.0=hd9ff511_3
+            - libudunits2=2.2.28=h40f5838_3
+            - libuuid=2.38.1=h0b41bf4_0
+            - libwebp-base=1.5.0=h851e524_0
+            - libxcb=1.17.0=h8a09558_0
+            - libxcrypt=4.4.36=hd590300_1
+            - libxml2=2.13.5=h8d12d68_1
+            - libxslt=1.1.39=h76b75d6_0
+            - libzip=1.11.2=h6991a6a_0
+            - libzlib=1.3.1=hb9d3cd8_2
+            - llvmlite=0.43.0=py310h1a6248f_1
+            - locket=1.0.0=pyhd8ed1ab_0
+            - lxml=5.3.0=py310h6ee67d5_2
+            - lz4-c=1.10.0=h5888daf_1
+            - lzo=2.10=hd590300_1001
+            - markupsafe=3.0.2=py310h89163eb_1
+            - matplotlib-base=3.10.0=py310h68603db_0
+            - minizip=4.0.7=h05a5f5f_3
+            - msgpack-python=1.1.0=py310h3788b33_0
+            - multidict=6.1.0=py310h89163eb_2
+            - munkres=1.1.4=pyh9f0ad1d_0
+            - nbformat=5.10.4=pyhd8ed1ab_1
+            - nc-time-axis=1.4.1=pyhd8ed1ab_1
+            - nceplibs-g2c=1.9.0=ha39ef1c_1
+            - ncurses=6.5=he02047a_1
+            - netcdf-fortran=4.6.1=nompi_ha5d1325_108
+            - netcdf4=1.7.2=nompi_py310h5146f0f_101
+            - nodeenv=1.9.1=pyhd8ed1ab_1
+            - nomkl=1.0=h5ca1d4c_0
+            - numba=0.60.0=py310h5dc88bb_0
+            - numcodecs=0.13.1=py310h5eaa309_0
+            - numexpr=2.10.2=py310hdb6e06b_100
+            - numpy_groupies=0.11.2=pyhd8ed1ab_1
+            - openblas=0.3.28=pthreads_h6ec200e_1
+            - openjpeg=2.5.3=h5fbd93e_0
+            - openssl=3.4.0=hb9d3cd8_0
+            - partd=1.4.2=pyhd8ed1ab_0
+            - patsy=1.0.1=pyhd8ed1ab_1
+            - pcre2=10.44=hba22ea6_2
+            - pillow=11.1.0=py310h7e6dc6c_0
+            - pint=0.24.4=pyhd8ed1ab_1
+            - pip=24.3.1=pyh8b19718_2
+            - pkgutil-resolve-name=1.3.10=pyhd8ed1ab_2
+            - platformdirs=4.3.6=pyhd8ed1ab_1
+            - pluggy=1.5.0=pyhd8ed1ab_1
+            - pooch=1.8.2=pyhd8ed1ab_1
+            - pre-commit=4.0.1=pyha770c72_1
+            - proj=9.5.1=h0054346_0
+            - propcache=0.2.1=py310ha75aee5_0
+            - pseudonetcdf=3.4.0=pyhd8ed1ab_0
+            - psutil=6.1.1=py310ha75aee5_0
+            - pthread-stubs=0.4=hb9d3cd8_1002
+            - pycparser=2.22=pyh29332c3_1
+            - pyparsing=3.2.1=pyhd8ed1ab_0
+            - pyproj=3.7.0=py310h2e9f774_0
+            - pyshp=2.3.1=pyhd8ed1ab_1
+            - pysocks=1.7.1=pyha55dd90_7
+            - pytest-cov=6.0.0=pyhd8ed1ab_1
+            - pytest-env=1.1.5=pyhd8ed1ab_1
+            - pytest-xdist=3.6.1=pyhd8ed1ab_1
+            - python=3.10.16=he725a3c_1_cpython
+            - python-eccodes=2.37.0=py310hf462985_0
+            - python-fastjsonschema=2.21.1=pyhd8ed1ab_0
+            - python-tzdata=2024.2=pyhd8ed1ab_1
+            - python-xxhash=3.5.0=py310ha75aee5_1
+            - python_abi=3.10=5_cp310
+            - pyyaml=6.0.2=py310ha75aee5_1
+            - qhull=2020.2=h434a139_5
+            - rasterio=1.4.3=py310hbf83865_0
+            - rav1e=0.6.6=he8a937b_2
+            - readline=8.2=h8228510_1
+            - referencing=0.35.1=pyhd8ed1ab_1
+            - requests=2.32.3=pyhd8ed1ab_1
+            - rpds-py=0.22.3=py310h505e2c1_0
+            - s3transfer=0.10.4=pyhd8ed1ab_1
+            - seaborn=0.13.2=hd8ed1ab_3
+            - seaborn-base=0.13.2=pyhd8ed1ab_3
+            - shapely=2.0.6=py310had3dfd6_2
+            - snappy=1.2.1=h8bd8927_1
+            - snuggs=1.4.7=pyhd8ed1ab_2
+            - sortedcontainers=2.4.0=pyhd8ed1ab_0
+            - sparse=0.15.4=pyh267e887_1
+            - sqlite=3.47.2=h9eae976_0
+            - statsmodels=0.14.4=py310hf462985_0
+            - svt-av1=2.3.0=h5888daf_0
+            - tblib=3.0.0=pyhd8ed1ab_1
+            - tk=8.6.13=noxft_h4845f30_101
+            - toml=0.10.2=pyhd8ed1ab_1
+            - tomli=2.2.1=pyhd8ed1ab_1
+            - toolz=1.0.0=pyhd8ed1ab_1
+            - tornado=6.4.2=py310ha75aee5_0
+            - traitlets=5.14.3=pyhd8ed1ab_1
+            - typing-extensions=4.12.2=hd8ed1ab_1
+            - typing_extensions=4.12.2=pyha770c72_1
+            - tzdata=2024b=hc8b5060_0
+            - udunits2=2.2.28=h40f5838_3
+            - ukkonen=1.0.1=py310h3788b33_5
+            - unicodedata2=15.1.0=py310ha75aee5_1
+            - uriparser=0.9.8=hac33072_0
+            - urllib3=2.3.0=pyhd8ed1ab_0
+            - virtualenv=20.28.1=pyhd8ed1ab_0
+            - wheel=0.45.1=pyhd8ed1ab_1
+            - wrapt=1.17.0=py310ha75aee5_0
+            - x265=3.5=h924138e_3
+            - xerces-c=3.2.5=h988505b_2
+            - xorg-libx11=1.8.10=h4f16b4b_1
+            - xorg-libxau=1.0.12=hb9d3cd8_0
+            - xorg-libxdamage=1.1.6=hb9d3cd8_0
+            - xorg-libxdmcp=1.1.5=hb9d3cd8_0
+            - xorg-libxext=1.3.6=hb9d3cd8_0
+            - xorg-libxfixes=6.0.1=hb9d3cd8_0
+            - xorg-libxi=1.8.2=hb9d3cd8_0
+            - xorg-libxxf86vm=1.1.6=hb9d3cd8_0
+            - xxhash=0.8.2=hd590300_0
+            - yaml=0.2.5=h7f98852_2
+            - yarl=1.18.3=py310ha75aee5_0
+            - zarr=2.18.3=pyhd8ed1ab_1
+            - zict=3.0.0=pyhd8ed1ab_1
+            - zipp=3.21.0=pyhd8ed1ab_1
+            - zlib=1.3.1=hb9d3cd8_2
+            - zstandard=0.23.0=py310ha39cb0e_1
+            - zstd=1.5.6=ha6fb4c9_0
+            - pip:
+                - dask==2022.8.1
+                - numbagg==0.8.2
+                - numpy==1.23.0
+                - packaging==23.1
+                - pandas==1.5.3
+                - pytest==7.4.0
+                - python-dateutil==2.8.2
+                - pytz==2023.3
+                - scipy==1.11.1
+                - setuptools==68.0.0
+                - six==1.16.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install numpy==1.23.0 packaging==23.1 pandas==1.5.3 pytest==7.4.0 python-dateutil==2.8.2 pytz==2023.3 six==1.16.0 scipy==1.11.1 setuptools==68.0.0 dask==2022.8.1
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/xarray/tests/test_computation.py b/xarray/tests/test_computation.py
+          --- a/xarray/tests/test_computation.py
+          +++ b/xarray/tests/test_computation.py
+          @@ -2010,6 +2010,14 @@ def test_where_attrs() -> None:
+                       ),
+                       id="datetime",
+                   ),
+          +        pytest.param(
+          +            xr.DataArray(
+          +                np.array([1000, 2000, 3000], dtype="timedelta64[ns]"), dims="x"
+          +            ),
+          +            xr.DataArray([0, 1], dims="degree", coords={"degree": [0, 1]}),
+          +            xr.DataArray([1000.0, 2000.0, 3000.0], dims="x"),
+          +            id="timedelta",
+          +        ),
+               ],
+           )
+           def test_polyval(
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["xarray/tests/test_computation.py::test_polyval[timedelta-False]"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["xarray/tests/test_computation.py::test_signature_properties", "xarray/tests/test_computation.py::test_result_name", "xarray/tests/test_computation.py::test_ordered_set_union", "xarray/tests/test_computation.py::test_ordered_set_intersection", "xarray/tests/test_computation.py::test_join_dict_keys", "xarray/tests/test_computation.py::test_collect_dict_values", "xarray/tests/test_computation.py::test_apply_identity", "xarray/tests/test_computation.py::test_apply_two_inputs", "xarray/tests/test_computation.py::test_apply_1d_and_0d", "xarray/tests/test_computation.py::test_apply_two_outputs", "xarray/tests/test_computation.py::test_apply_dask_parallelized_two_outputs", "xarray/tests/test_computation.py::test_apply_input_core_dimension", "xarray/tests/test_computation.py::test_apply_output_core_dimension", "xarray/tests/test_computation.py::test_apply_exclude", "xarray/tests/test_computation.py::test_apply_groupby_add", "xarray/tests/test_computation.py::test_unified_dim_sizes", "xarray/tests/test_computation.py::test_broadcast_compat_data_1d", "xarray/tests/test_computation.py::test_broadcast_compat_data_2d", "xarray/tests/test_computation.py::test_keep_attrs", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[default]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[False]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[True]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[override]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[drop]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[drop_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_variable[no_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[default]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[False]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[True]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[override]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[drop]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[drop_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray[no_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[default-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[default-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[False-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[False-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[True-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[True-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[override-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[override-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[drop-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[drop-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[drop_conflicts-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[drop_conflicts-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[no_conflicts-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataarray_variables[no_conflicts-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[default]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[False]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[True]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[override]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[drop]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[drop_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset[no_conflicts]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[default-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[default-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[default-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[False-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[False-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[False-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[True-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[True-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[True-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[override-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[override-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[override-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop_conflicts-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop_conflicts-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[drop_conflicts-coord]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[no_conflicts-data]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[no_conflicts-dim]", "xarray/tests/test_computation.py::test_keep_attrs_strategies_dataset_variables[no_conflicts-coord]", "xarray/tests/test_computation.py::test_dataset_join", "xarray/tests/test_computation.py::test_apply_dask", "xarray/tests/test_computation.py::test_apply_dask_parallelized_one_arg", "xarray/tests/test_computation.py::test_apply_dask_parallelized_two_args", "xarray/tests/test_computation.py::test_apply_dask_parallelized_errors", "xarray/tests/test_computation.py::test_apply_dask_multiple_inputs", "xarray/tests/test_computation.py::test_apply_dask_new_output_dimension", "xarray/tests/test_computation.py::test_apply_dask_new_output_sizes", "xarray/tests/test_computation.py::test_vectorize", "xarray/tests/test_computation.py::test_vectorize_dask", "xarray/tests/test_computation.py::test_vectorize_dask_dtype", "xarray/tests/test_computation.py::test_vectorize_dask_dtype_without_output_dtypes[data_array0]", "xarray/tests/test_computation.py::test_vectorize_dask_dtype_without_output_dtypes[data_array1]", "xarray/tests/test_computation.py::test_vectorize_exclude_dims", "xarray/tests/test_computation.py::test_vectorize_exclude_dims_dask", "xarray/tests/test_computation.py::test_corr_only_dataarray", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a0-da_b0-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a0-da_b0-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a1-da_b1-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a1-da_b1-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a2-da_b2-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a2-da_b2-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a3-da_b3-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a3-da_b3-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a4-da_b4-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a4-da_b4-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a5-da_b5-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[None-da_a5-da_b5-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a0-da_b0-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a0-da_b0-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a1-da_b1-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a1-da_b1-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a2-da_b2-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a2-da_b2-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a3-da_b3-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a3-da_b3-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a4-da_b4-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a4-da_b4-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a5-da_b5-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[x-da_a5-da_b5-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a0-da_b0-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a0-da_b0-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a1-da_b1-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a1-da_b1-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a2-da_b2-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a2-da_b2-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a3-da_b3-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a3-da_b3-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a4-da_b4-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a4-da_b4-1]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a5-da_b5-0]", "xarray/tests/test_computation.py::test_lazy_corrcov[time-da_a5-da_b5-1]", "xarray/tests/test_computation.py::test_cov[None-da_a0-da_b0-0]", "xarray/tests/test_computation.py::test_cov[None-da_a0-da_b0-1]", "xarray/tests/test_computation.py::test_cov[None-da_a1-da_b1-0]", "xarray/tests/test_computation.py::test_cov[None-da_a1-da_b1-1]", "xarray/tests/test_computation.py::test_cov[None-da_a2-da_b2-0]", "xarray/tests/test_computation.py::test_cov[None-da_a2-da_b2-1]", "xarray/tests/test_computation.py::test_cov[time-da_a0-da_b0-0]", "xarray/tests/test_computation.py::test_cov[time-da_a0-da_b0-1]", "xarray/tests/test_computation.py::test_cov[time-da_a1-da_b1-0]", "xarray/tests/test_computation.py::test_cov[time-da_a1-da_b1-1]", "xarray/tests/test_computation.py::test_cov[time-da_a2-da_b2-0]", "xarray/tests/test_computation.py::test_cov[time-da_a2-da_b2-1]", "xarray/tests/test_computation.py::test_corr[None-da_a0-da_b0]", "xarray/tests/test_computation.py::test_corr[None-da_a1-da_b1]", "xarray/tests/test_computation.py::test_corr[None-da_a2-da_b2]", "xarray/tests/test_computation.py::test_corr[time-da_a0-da_b0]", "xarray/tests/test_computation.py::test_corr[time-da_a1-da_b1]", "xarray/tests/test_computation.py::test_corr[time-da_a2-da_b2]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a0-da_b0]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a1-da_b1]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a2-da_b2]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a3-da_b3]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a4-da_b4]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a5-da_b5]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a6-da_b6]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a7-da_b7]", "xarray/tests/test_computation.py::test_covcorr_consistency[None-da_a8-da_b8]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a0-da_b0]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a1-da_b1]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a2-da_b2]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a3-da_b3]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a4-da_b4]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a5-da_b5]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a6-da_b6]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a7-da_b7]", "xarray/tests/test_computation.py::test_covcorr_consistency[time-da_a8-da_b8]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a0-da_b0]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a1-da_b1]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a2-da_b2]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a3-da_b3]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a4-da_b4]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a5-da_b5]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a6-da_b6]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a7-da_b7]", "xarray/tests/test_computation.py::test_covcorr_consistency[x-da_a8-da_b8]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a0-da_b0]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a1-da_b1]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a2-da_b2]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a3-da_b3]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a4-da_b4]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a5-da_b5]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a6-da_b6]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a7-da_b7]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[None-da_a8-da_b8]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a0-da_b0]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a1-da_b1]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a2-da_b2]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a3-da_b3]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a4-da_b4]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a5-da_b5]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a6-da_b6]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a7-da_b7]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[time-da_a8-da_b8]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a0-da_b0]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a1-da_b1]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a2-da_b2]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a3-da_b3]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a4-da_b4]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a5-da_b5]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a6-da_b6]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a7-da_b7]", "xarray/tests/test_computation.py::test_corr_lazycorr_consistency[x-da_a8-da_b8]", "xarray/tests/test_computation.py::test_corr_dtype_error", "xarray/tests/test_computation.py::test_autocov[None-da_a0]", "xarray/tests/test_computation.py::test_autocov[None-da_a1]", "xarray/tests/test_computation.py::test_autocov[None-da_a2]", "xarray/tests/test_computation.py::test_autocov[None-da_a3]", "xarray/tests/test_computation.py::test_autocov[None-da_a4]", "xarray/tests/test_computation.py::test_autocov[time-da_a0]", "xarray/tests/test_computation.py::test_autocov[time-da_a1]", "xarray/tests/test_computation.py::test_autocov[time-da_a2]", "xarray/tests/test_computation.py::test_autocov[time-da_a3]", "xarray/tests/test_computation.py::test_autocov[time-da_a4]", "xarray/tests/test_computation.py::test_autocov[x-da_a0]", "xarray/tests/test_computation.py::test_autocov[x-da_a1]", "xarray/tests/test_computation.py::test_autocov[x-da_a2]", "xarray/tests/test_computation.py::test_autocov[x-da_a3]", "xarray/tests/test_computation.py::test_autocov[x-da_a4]", "xarray/tests/test_computation.py::test_autocov[dim3-da_a0]", "xarray/tests/test_computation.py::test_autocov[dim3-da_a1]", "xarray/tests/test_computation.py::test_autocov[dim3-da_a2]", "xarray/tests/test_computation.py::test_autocov[dim3-da_a3]", "xarray/tests/test_computation.py::test_autocov[dim3-da_a4]", "xarray/tests/test_computation.py::test_vectorize_dask_new_output_dims", "xarray/tests/test_computation.py::test_output_wrong_number", "xarray/tests/test_computation.py::test_output_wrong_dims", "xarray/tests/test_computation.py::test_output_wrong_dim_size", "xarray/tests/test_computation.py::test_dot[True]", "xarray/tests/test_computation.py::test_dot[False]", "xarray/tests/test_computation.py::test_dot_align_coords[True]", "xarray/tests/test_computation.py::test_dot_align_coords[False]", "xarray/tests/test_computation.py::test_where", "xarray/tests/test_computation.py::test_where_attrs", "xarray/tests/test_computation.py::test_polyval[simple-False]", "xarray/tests/test_computation.py::test_polyval[simple-True]", "xarray/tests/test_computation.py::test_polyval[broadcast-x-False]", "xarray/tests/test_computation.py::test_polyval[broadcast-x-True]", "xarray/tests/test_computation.py::test_polyval[shared-dim-False]", "xarray/tests/test_computation.py::test_polyval[shared-dim-True]", "xarray/tests/test_computation.py::test_polyval[reordered-index-False]", "xarray/tests/test_computation.py::test_polyval[reordered-index-True]", "xarray/tests/test_computation.py::test_polyval[sparse-index-False]", "xarray/tests/test_computation.py::test_polyval[sparse-index-True]", "xarray/tests/test_computation.py::test_polyval[array-dataset-False]", "xarray/tests/test_computation.py::test_polyval[array-dataset-True]", "xarray/tests/test_computation.py::test_polyval[dataset-array-False]", "xarray/tests/test_computation.py::test_polyval[dataset-array-True]", "xarray/tests/test_computation.py::test_polyval[dataset-dataset-False]", "xarray/tests/test_computation.py::test_polyval[dataset-dataset-True]", "xarray/tests/test_computation.py::test_polyval[datetime-False]", "xarray/tests/test_computation.py::test_polyval[datetime-True]", "xarray/tests/test_computation.py::test_polyval[timedelta-True]", "xarray/tests/test_computation.py::test_polyval_degree_dim_checks", "xarray/tests/test_computation.py::test_cross[a0-b0-ae0-be0-dim_0--1-False]", "xarray/tests/test_computation.py::test_cross[a0-b0-ae0-be0-dim_0--1-True]", "xarray/tests/test_computation.py::test_cross[a1-b1-ae1-be1-dim_0--1-False]", "xarray/tests/test_computation.py::test_cross[a1-b1-ae1-be1-dim_0--1-True]", "xarray/tests/test_computation.py::test_cross[a2-b2-ae2-be2-dim_0--1-False]", "xarray/tests/test_computation.py::test_cross[a2-b2-ae2-be2-dim_0--1-True]", "xarray/tests/test_computation.py::test_cross[a3-b3-ae3-be3-dim_0--1-False]", "xarray/tests/test_computation.py::test_cross[a3-b3-ae3-be3-dim_0--1-True]", "xarray/tests/test_computation.py::test_cross[a4-b4-ae4-be4-cartesian-1-False]", "xarray/tests/test_computation.py::test_cross[a4-b4-ae4-be4-cartesian-1-True]", "xarray/tests/test_computation.py::test_cross[a5-b5-ae5-be5-cartesian--1-False]", "xarray/tests/test_computation.py::test_cross[a5-b5-ae5-be5-cartesian--1-True]", "xarray/tests/test_computation.py::test_cross[a6-b6-ae6-be6-cartesian--1-False]", "xarray/tests/test_computation.py::test_cross[a6-b6-ae6-be6-cartesian--1-True]"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["xarray/tests/test_computation.py"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
