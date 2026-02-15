@@ -71,3 +71,8 @@ _configtest.o.d
 
 # Used by mypy
 .mypy_cache/
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
