@@ -1,0 +1,345 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-14011"
+      REPO: "django/django"
+      VERSION: "4.0"
+      BASE_COMMIT: "e4430f22c8e3d29ce5d9d0263fba57121938d06d"
+      ENV_SETUP_COMMIT: "475cffd1d64c690cdad16ede4d5e81985738ceb4"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'django/test/testcases.py tests/servers/tests.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.8"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py38h06a4308_0
+            - python=3.8.20=he870216_0
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py38h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py38h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohappyeyeballs==2.4.3
+                - aiohttp==3.10.9
+                - aiosignal==1.3.1
+                - argon2-cffi==23.1.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.8.1
+                - async-timeout==4.0.3
+                - attrs==24.2.0
+                - backports-zoneinfo==0.2.1
+                - bcrypt==4.2.0
+                - certifi==2024.8.30
+                - cffi==1.17.1
+                - charset-normalizer==3.4.0
+                - docutils==0.20.1
+                - exceptiongroup==1.2.2
+                - frozenlist==1.4.1
+                - geoip2==4.8.0
+                - h11==0.14.0
+                - idna==3.10
+                - jinja2==3.1.4
+                - markupsafe==2.1.5
+                - maxminddb==2.6.2
+                - multidict==6.1.0
+                - numpy==1.24.4
+                - outcome==1.3.0.post0
+                - pillow==10.4.0
+                - propcache==0.2.0
+                - pycparser==2.22
+                - pylibmc==1.6.3
+                - pymemcache==4.0.0
+                - pysocks==1.7.1
+                - python-memcached==1.62
+                - pytz==2024.2
+                - pywatchman==2.0.0
+                - pyyaml==6.0.2
+                - redis==5.1.1
+                - requests==2.32.3
+                - selenium==4.25.0
+                - sniffio==1.3.1
+                - sortedcontainers==2.4.0
+                - sqlparse==0.5.1
+                - tblib==3.0.0
+                - trio==0.26.2
+                - trio-websocket==0.11.1
+                - typing-extensions==4.12.2
+                - tzdata==2024.2
+                - urllib3==2.2.3
+                - websocket-client==1.8.0
+                - wsproto==1.2.0
+                - yarl==1.14.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/django/test/testcases.py b/django/test/testcases.py
+          --- a/django/test/testcases.py
+          +++ b/django/test/testcases.py
+          @@ -1513,11 +1513,12 @@ def run(self):
+                   finally:
+                       connections.close_all()
+           
+          -    def _create_server(self):
+          +    def _create_server(self, connections_override=None):
+                   return self.server_class(
+                       (self.host, self.port),
+                       QuietWSGIRequestHandler,
+                       allow_reuse_address=False,
+          +            connections_override=connections_override,
+                   )
+           
+               def terminate(self):
+          @@ -1553,21 +1554,28 @@ def allowed_host(cls):
+                   return cls.host
+           
+               @classmethod
+          -    def setUpClass(cls):
+          -        super().setUpClass()
+          +    def _make_connections_override(cls):
+                   connections_override = {}
+                   for conn in connections.all():
+                       # If using in-memory sqlite databases, pass the connections to
+                       # the server thread.
+                       if conn.vendor == 'sqlite' and conn.is_in_memory_db():
+          -                # Explicitly enable thread-shareability for this connection
+          -                conn.inc_thread_sharing()
+                           connections_override[conn.alias] = conn
+          +        return connections_override
+           
+          +    @classmethod
+          +    def setUpClass(cls):
+          +        super().setUpClass()
+                   cls._live_server_modified_settings = modify_settings(
+                       ALLOWED_HOSTS={'append': cls.allowed_host},
+                   )
+                   cls._live_server_modified_settings.enable()
+          +
+          +        connections_override = cls._make_connections_override()
+          +        for conn in connections_override.values():
+          +            # Explicitly enable thread-shareability for this connection.
+          +            conn.inc_thread_sharing()
+          +
+                   cls.server_thread = cls._create_server_thread(connections_override)
+                   cls.server_thread.daemon = True
+                   cls.server_thread.start()
+          @@ -1593,7 +1601,7 @@ def _create_server_thread(cls, connections_override):
+               def _tearDownClassInternal(cls):
+                   # Terminate the live server's thread.
+                   cls.server_thread.terminate()
+          -        # Restore sqlite in-memory database connections' non-shareability.
+          +        # Restore shared connections' non-shareability.
+                   for conn in cls.server_thread.connections_override.values():
+                       conn.dec_thread_sharing()
+           
+          diff --git a/tests/servers/tests.py b/tests/servers/tests.py
+          --- a/tests/servers/tests.py
+          +++ b/tests/servers/tests.py
+          @@ -4,13 +4,15 @@
+           import errno
+           import os
+           import socket
+          +import threading
+           from http.client import HTTPConnection
+           from urllib.error import HTTPError
+           from urllib.parse import urlencode
+           from urllib.request import urlopen
+           
+           from django.conf import settings
+          -from django.core.servers.basehttp import WSGIServer
+          +from django.core.servers.basehttp import ThreadedWSGIServer, WSGIServer
+          +from django.db import DEFAULT_DB_ALIAS, connections
+           from django.test import LiveServerTestCase, override_settings
+           from django.test.testcases import LiveServerThread, QuietWSGIRequestHandler
+           
+          @@ -40,6 +42,71 @@ def urlopen(self, url):
+                   return urlopen(self.live_server_url + url)
+           
+           
+          +class CloseConnectionTestServer(ThreadedWSGIServer):
+          +    def __init__(self, *args, **kwargs):
+          +        super().__init__(*args, **kwargs)
+          +        # This event is set right after the first time a request closes its
+          +        # database connections.
+          +        self._connections_closed = threading.Event()
+          +
+          +    def _close_connections(self):
+          +        super()._close_connections()
+          +        self._connections_closed.set()
+          +
+          +
+          +class CloseConnectionTestLiveServerThread(LiveServerThread):
+          +
+          +    server_class = CloseConnectionTestServer
+          +
+          +    def _create_server(self, connections_override=None):
+          +        return super()._create_server(connections_override=self.connections_override)
+          +
+          +
+          +class LiveServerTestCloseConnectionTest(LiveServerBase):
+          +
+          +    server_thread_class = CloseConnectionTestLiveServerThread
+          +
+          +    @classmethod
+          +    def _make_connections_override(cls):
+          +        conn = connections[DEFAULT_DB_ALIAS]
+          +        cls.conn = conn
+          +        cls.old_conn_max_age = conn.settings_dict['CONN_MAX_AGE']
+          +        # Set the connection's CONN_MAX_AGE to None to simulate the
+          +        # CONN_MAX_AGE setting being set to None on the server. This prevents
+          +        # Django from closing the connection and allows testing that
+          +        # ThreadedWSGIServer closes connections.
+          +        conn.settings_dict['CONN_MAX_AGE'] = None
+          +        # Pass a database connection through to the server to check it is being
+          +        # closed by ThreadedWSGIServer.
+          +        return {DEFAULT_DB_ALIAS: conn}
+          +
+          +    @classmethod
+          +    def tearDownConnectionTest(cls):
+          +        cls.conn.settings_dict['CONN_MAX_AGE'] = cls.old_conn_max_age
+          +
+          +    @classmethod
+          +    def tearDownClass(cls):
+          +        cls.tearDownConnectionTest()
+          +        super().tearDownClass()
+          +
+          +    def test_closes_connections(self):
+          +        # The server's request thread sets this event after closing
+          +        # its database connections.
+          +        closed_event = self.server_thread.httpd._connections_closed
+          +        conn = self.conn
+          +        # Open a connection to the database.
+          +        conn.connect()
+          +        self.assertIsNotNone(conn.connection)
+          +        with self.urlopen('/model_view/') as f:
+          +            # The server can access the database.
+          +            self.assertEqual(f.read().splitlines(), [b'jane', b'robert'])
+          +        # Wait for the server's request thread to close the connection.
+          +        # A timeout of 0.1 seconds should be more than enough. If the wait
+          +        # times out, the assertion after should fail.
+          +        closed_event.wait(timeout=0.1)
+          +        self.assertIsNone(conn.connection)
+          +
+          +
+           class FailingLiveServerThread(LiveServerThread):
+               def _create_server(self):
+                   raise RuntimeError('Error creating server.')
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_live_server_url_is_class_property (servers.tests.LiveServerAddress)", "Data written to the database by a view can be read.", "Fixtures are properly loaded and visible to the live server thread.", "test_check_model_instance_from_subview (servers.tests.LiveServerThreadedTests)", "test_view_calls_subview (servers.tests.LiveServerThreadedTests)", "test_404 (servers.tests.LiveServerViews)", "A HTTP 1.1 server is supposed to support keep-alive. Since our", "test_environ (servers.tests.LiveServerViews)", "test_keep_alive_connection_clears_previous_request_data (servers.tests.LiveServerViews)", "See `test_closes_connection_without_content_length` for details. This", "test_media_files (servers.tests.LiveServerViews)", "LiveServerTestCase reports a 404 status code when HTTP client", "Launched server serves with HTTP 1.1.", "test_static_files (servers.tests.LiveServerViews)", "test_view (servers.tests.LiveServerViews)", "Each LiveServerTestCase binds to a unique port or fails to start a", "LiveServerTestCase.port customizes the server's port."]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_set_up_class (servers.tests.LiveServerTestCaseSetupTest)", "Contrast to"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["django.test.testcases", "servers.tests"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
