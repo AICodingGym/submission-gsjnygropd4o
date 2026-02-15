@@ -1,0 +1,230 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-15467"
+      REPO: "django/django"
+      VERSION: "4.1"
+      BASE_COMMIT: "e0442a628eb480eac6a7888aed5a86f83499e299"
+      ENV_SETUP_COMMIT: "647480166bfe7532e8c471fef0146e3a17e6c0c9"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/admin_widgets/tests.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohappyeyeballs==2.4.3
+                - aiohttp==3.10.9
+                - aiosignal==1.3.1
+                - aiosmtpd==1.4.6
+                - argon2-cffi==23.1.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.8.1
+                - async-timeout==4.0.3
+                - atpublic==5.0
+                - attrs==24.2.0
+                - bcrypt==4.2.0
+                - black==24.10.0
+                - certifi==2024.8.30
+                - cffi==1.17.1
+                - charset-normalizer==3.4.0
+                - click==8.1.7
+                - docutils==0.21.2
+                - exceptiongroup==1.2.2
+                - frozenlist==1.4.1
+                - geoip2==4.8.0
+                - h11==0.14.0
+                - idna==3.10
+                - jinja2==3.1.4
+                - markupsafe==3.0.1
+                - maxminddb==2.6.2
+                - multidict==6.1.0
+                - mypy-extensions==1.0.0
+                - numpy==2.0.2
+                - outcome==1.3.0.post0
+                - packaging==24.1
+                - pathspec==0.12.1
+                - pillow==10.4.0
+                - platformdirs==4.3.6
+                - propcache==0.2.0
+                - pycparser==2.22
+                - pylibmc==1.6.3
+                - pymemcache==4.0.0
+                - pysocks==1.7.1
+                - pytz==2024.2
+                - pywatchman==2.0.0
+                - pyyaml==6.0.2
+                - redis==5.1.1
+                - requests==2.32.3
+                - selenium==4.25.0
+                - sniffio==1.3.1
+                - sortedcontainers==2.4.0
+                - sqlparse==0.5.1
+                - tblib==3.0.0
+                - tomli==2.0.2
+                - trio==0.26.2
+                - trio-websocket==0.11.1
+                - typing-extensions==4.12.2
+                - tzdata==2024.2
+                - urllib3==2.2.3
+                - websocket-client==1.8.0
+                - wsproto==1.2.0
+                - yarl==1.14.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/admin_widgets/tests.py b/tests/admin_widgets/tests.py
+          --- a/tests/admin_widgets/tests.py
+          +++ b/tests/admin_widgets/tests.py
+          @@ -21,6 +21,7 @@
+               CharField,
+               DateField,
+               DateTimeField,
+          +    ForeignKey,
+               ManyToManyField,
+               UUIDField,
+           )
+          @@ -141,6 +142,17 @@ def test_radio_fields_ForeignKey(self):
+                   )
+                   self.assertIsNone(ff.empty_label)
+           
+          +    def test_radio_fields_foreignkey_formfield_overrides_empty_label(self):
+          +        class MyModelAdmin(admin.ModelAdmin):
+          +            radio_fields = {"parent": admin.VERTICAL}
+          +            formfield_overrides = {
+          +                ForeignKey: {"empty_label": "Custom empty label"},
+          +            }
+          +
+          +        ma = MyModelAdmin(Inventory, admin.site)
+          +        ff = ma.formfield_for_dbfield(Inventory._meta.get_field("parent"), request=None)
+          +        self.assertEqual(ff.empty_label, "Custom empty label")
+          +
+               def test_many_to_many(self):
+                   self.assertFormfield(Band, "members", forms.SelectMultiple)
+           
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_radio_fields_foreignkey_formfield_overrides_empty_label (admin_widgets.tests.AdminFormfieldForDBFieldTests)"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_CharField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_DateField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_DateTimeField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_EmailField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_FileField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_ForeignKey (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_IntegerField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_TextField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_TimeField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_URLField (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_choices_with_radio_fields (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_field_with_choices (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_filtered_many_to_many (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_formfield_overrides (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "formfield_overrides works for a custom field class.", "Overriding the widget for DateTimeField doesn't overrides the default", "The autocomplete_fields, raw_id_fields, filter_vertical, and", "Widget instances in formfield_overrides are not shared between", "test_inheritance (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "m2m fields help text as it applies to admin app (#9321).", "test_many_to_many (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_radio_fields_ForeignKey (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_raw_id_ForeignKey (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_raw_id_many_to_many (admin_widgets.tests.AdminFormfieldForDBFieldTests)", "test_render (admin_widgets.tests.FilteredSelectMultipleWidgetTest)", "test_stacked_render (admin_widgets.tests.FilteredSelectMultipleWidgetTest)", "test_attrs (admin_widgets.tests.AdminDateWidgetTest)", "test_attrs (admin_widgets.tests.AdminUUIDWidgetTests)", "test_attrs (admin_widgets.tests.AdminTimeWidgetTest)", "test_custom_widget_render (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_no_can_add_related (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_on_delete_cascade_rel_cant_delete_related (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_select_multiple_widget_cant_change_delete_related (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_widget_delegates_value_omitted_from_data (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_widget_is_hidden (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_widget_is_not_hidden (admin_widgets.tests.RelatedFieldWidgetWrapperTests)", "test_get_context_validates_url (admin_widgets.tests.AdminURLWidgetTest)", "test_render (admin_widgets.tests.AdminURLWidgetTest)", "test_render_idn (admin_widgets.tests.AdminURLWidgetTest)", "WARNING: This test doesn't use assertHTMLEqual since it will get rid", "test_localization (admin_widgets.tests.AdminSplitDateTimeWidgetTest)", "test_render (admin_widgets.tests.AdminSplitDateTimeWidgetTest)", "test_fk_related_model_not_in_admin (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_fk_to_self_model_not_in_admin (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_proper_manager_for_label_lookup (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_relations_to_non_primary_key (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_render (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_render_fk_as_pk_model (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_render_unsafe_limit_choices_to (admin_widgets.tests.ForeignKeyRawIdWidgetTest)", "test_m2m_related_model_not_in_admin (admin_widgets.tests.ManyToManyRawIdWidgetTest)", "test_render (admin_widgets.tests.ManyToManyRawIdWidgetTest)", "Ensure the user can only see their own cars in the foreign key dropdown.", "test_changelist_ForeignKey (admin_widgets.tests.AdminForeignKeyWidgetChangeList)", "File widgets should render as a link when they're marked \"read only.\"", "test_render (admin_widgets.tests.AdminFileWidgetTests)", "test_render_disabled (admin_widgets.tests.AdminFileWidgetTests)", "test_render_required (admin_widgets.tests.AdminFileWidgetTests)", "test_invalid_target_id (admin_widgets.tests.AdminForeignKeyRawIdWidget)", "test_label_and_url_for_value_invalid_uuid (admin_widgets.tests.AdminForeignKeyRawIdWidget)", "test_nonexistent_target_id (admin_widgets.tests.AdminForeignKeyRawIdWidget)", "test_url_params_from_lookup_dict_any_iterable (admin_widgets.tests.AdminForeignKeyRawIdWidget)", "test_url_params_from_lookup_dict_callable (admin_widgets.tests.AdminForeignKeyRawIdWidget)"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["admin_widgets.tests"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
