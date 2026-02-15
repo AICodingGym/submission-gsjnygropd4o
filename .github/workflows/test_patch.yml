@@ -1,0 +1,244 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-12276"
+      REPO: "django/django"
+      VERSION: "3.1"
+      BASE_COMMIT: "53d8646f799de7f92ab9defe9dc56c6125448102"
+      ENV_SETUP_COMMIT: "0668164b4ac93a5be79f5b87fae83c657124d9ab"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/forms_tests/tests/test_forms.py tests/forms_tests/widget_tests/test_fileinput.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.6"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - certifi=2021.5.30=py36h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.3=he6710b0_2
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=1.1.1w=h7f8727e_0
+            - pip=21.2.2=py36h06a4308_0
+            - python=3.6.13=h12debd9_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=58.0.4=py36h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.37.1=pyhd3eb1b0_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohttp==3.8.6
+                - aiosignal==1.2.0
+                - argon2-cffi==21.3.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.4.1
+                - async-timeout==4.0.2
+                - asynctest==0.13.0
+                - attrs==22.2.0
+                - bcrypt==4.0.1
+                - cffi==1.15.1
+                - charset-normalizer==2.0.12
+                - dataclasses==0.8
+                - docutils==0.18.1
+                - frozenlist==1.2.0
+                - geoip2==4.6.0
+                - idna==3.10
+                - idna-ssl==1.1.0
+                - jinja2==3.0.3
+                - markupsafe==2.0.1
+                - maxminddb==2.2.0
+                - multidict==5.2.0
+                - numpy==1.19.5
+                - pillow==8.4.0
+                - pycparser==2.21
+                - pylibmc==1.6.3
+                - python-memcached==1.62
+                - pytz==2024.2
+                - pywatchman==1.4.1
+                - pyyaml==6.0.1
+                - requests==2.27.1
+                - selenium==3.141.0
+                - sqlparse==0.4.4
+                - tblib==1.7.0
+                - typing-extensions==4.1.1
+                - urllib3==1.26.20
+                - yarl==1.7.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/forms_tests/tests/test_forms.py b/tests/forms_tests/tests/test_forms.py
+          --- a/tests/forms_tests/tests/test_forms.py
+          +++ b/tests/forms_tests/tests/test_forms.py
+          @@ -8,11 +8,11 @@
+           from django.core.validators import MaxValueValidator, RegexValidator
+           from django.forms import (
+               BooleanField, CharField, CheckboxSelectMultiple, ChoiceField, DateField,
+          -    DateTimeField, EmailField, FileField, FloatField, Form, HiddenInput,
+          -    ImageField, IntegerField, MultipleChoiceField, MultipleHiddenInput,
+          -    MultiValueField, NullBooleanField, PasswordInput, RadioSelect, Select,
+          -    SplitDateTimeField, SplitHiddenDateTimeWidget, Textarea, TextInput,
+          -    TimeField, ValidationError, forms,
+          +    DateTimeField, EmailField, FileField, FileInput, FloatField, Form,
+          +    HiddenInput, ImageField, IntegerField, MultipleChoiceField,
+          +    MultipleHiddenInput, MultiValueField, NullBooleanField, PasswordInput,
+          +    RadioSelect, Select, SplitDateTimeField, SplitHiddenDateTimeWidget,
+          +    Textarea, TextInput, TimeField, ValidationError, forms,
+           )
+           from django.forms.renderers import DjangoTemplates, get_default_renderer
+           from django.forms.utils import ErrorList
+          @@ -2486,6 +2486,25 @@ class FileForm(forms.Form):
+                   self.assertEqual(f.errors, {})
+                   self.assertEqual(f.cleaned_data['file1'], 'resume.txt')
+           
+          +    def test_filefield_with_fileinput_required(self):
+          +        class FileForm(Form):
+          +            file1 = forms.FileField(widget=FileInput)
+          +
+          +        f = FileForm(auto_id=False)
+          +        self.assertHTMLEqual(
+          +            f.as_table(),
+          +            '<tr><th>File1:</th><td>'
+          +            '<input type="file" name="file1" required></td></tr>',
+          +        )
+          +        # A required file field with initial data doesn't contain the required
+          +        # HTML attribute. The file input is left blank by the user to keep the
+          +        # existing, initial value.
+          +        f = FileForm(initial={'file1': 'resume.txt'}, auto_id=False)
+          +        self.assertHTMLEqual(
+          +            f.as_table(),
+          +            '<tr><th>File1:</th><td><input type="file" name="file1"></td></tr>',
+          +        )
+          +
+               def test_basic_processing_in_view(self):
+                   class UserRegistration(Form):
+                       username = CharField(max_length=10)
+          diff --git a/tests/forms_tests/widget_tests/test_fileinput.py b/tests/forms_tests/widget_tests/test_fileinput.py
+          --- a/tests/forms_tests/widget_tests/test_fileinput.py
+          +++ b/tests/forms_tests/widget_tests/test_fileinput.py
+          @@ -18,3 +18,9 @@ def test_render(self):
+               def test_value_omitted_from_data(self):
+                   self.assertIs(self.widget.value_omitted_from_data({}, {}, 'field'), True)
+                   self.assertIs(self.widget.value_omitted_from_data({}, {'field': 'value'}, 'field'), False)
+          +
+          +    def test_use_required_attribute(self):
+          +        # False when initial data exists. The file input is left blank by the
+          +        # user to keep the existing, initial value.
+          +        self.assertIs(self.widget.use_required_attribute(None), True)
+          +        self.assertIs(self.widget.use_required_attribute('resume.txt'), False)
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+          export LANG=en_US.UTF-8
+          export LANGUAGE=en_US:en
+          export LC_ALL=en_US.UTF-8
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          ["test_use_required_attribute (forms_tests.widget_tests.test_fileinput.FileInputTest)", "test_filefield_with_fileinput_required (forms_tests.tests.test_forms.FormsTestCase)"]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          ["test_attribute_class (forms_tests.tests.test_forms.RendererTests)", "test_attribute_instance (forms_tests.tests.test_forms.RendererTests)", "test_attribute_override (forms_tests.tests.test_forms.RendererTests)", "test_default (forms_tests.tests.test_forms.RendererTests)", "test_kwarg_class (forms_tests.tests.test_forms.RendererTests)", "test_kwarg_instance (forms_tests.tests.test_forms.RendererTests)", "test_render (forms_tests.widget_tests.test_fileinput.FileInputTest)", "test_value_omitted_from_data (forms_tests.widget_tests.test_fileinput.FileInputTest)", "test_accessing_clean (forms_tests.tests.test_forms.FormsTestCase)", "test_auto_id (forms_tests.tests.test_forms.FormsTestCase)", "test_auto_id_false (forms_tests.tests.test_forms.FormsTestCase)", "test_auto_id_on_form_and_field (forms_tests.tests.test_forms.FormsTestCase)", "test_auto_id_true (forms_tests.tests.test_forms.FormsTestCase)", "test_baseform_repr (forms_tests.tests.test_forms.FormsTestCase)", "test_baseform_repr_dont_trigger_validation (forms_tests.tests.test_forms.FormsTestCase)", "test_basic_processing_in_view (forms_tests.tests.test_forms.FormsTestCase)", "BoundField without any choices (subwidgets) evaluates to True.", "test_boundfield_empty_label (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_id_for_label (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_id_for_label_override_by_attrs (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_initial_called_once (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_invalid_index (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_label_tag (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_label_tag_custom_widget_id_for_label (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_label_tag_no_id (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_slice (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_value_disabled_callable_initial (forms_tests.tests.test_forms.FormsTestCase)", "test_boundfield_values (forms_tests.tests.test_forms.FormsTestCase)", "test_callable_initial_data (forms_tests.tests.test_forms.FormsTestCase)", "test_changed_data (forms_tests.tests.test_forms.FormsTestCase)", "test_changing_cleaned_data_in_clean (forms_tests.tests.test_forms.FormsTestCase)", "test_changing_cleaned_data_nothing_returned (forms_tests.tests.test_forms.FormsTestCase)", "test_checkbox_auto_id (forms_tests.tests.test_forms.FormsTestCase)", "test_class_prefix (forms_tests.tests.test_forms.FormsTestCase)", "test_cleaned_data_only_fields (forms_tests.tests.test_forms.FormsTestCase)", "test_custom_boundfield (forms_tests.tests.test_forms.FormsTestCase)", "test_custom_empty_values (forms_tests.tests.test_forms.FormsTestCase)", "test_datetime_changed_data_callable_with_microseconds (forms_tests.tests.test_forms.FormsTestCase)", "test_datetime_clean_initial_callable_disabled (forms_tests.tests.test_forms.FormsTestCase)", "test_dynamic_construction (forms_tests.tests.test_forms.FormsTestCase)", "test_dynamic_initial_data (forms_tests.tests.test_forms.FormsTestCase)", "test_empty_data_files_multi_value_dict (forms_tests.tests.test_forms.FormsTestCase)", "test_empty_dict (forms_tests.tests.test_forms.FormsTestCase)", "test_empty_permitted (forms_tests.tests.test_forms.FormsTestCase)", "test_empty_permitted_and_use_required_attribute (forms_tests.tests.test_forms.FormsTestCase)", "test_empty_querydict_args (forms_tests.tests.test_forms.FormsTestCase)", "test_error_dict (forms_tests.tests.test_forms.FormsTestCase)", "#21962 - adding html escape flag to ErrorDict", "test_error_escaping (forms_tests.tests.test_forms.FormsTestCase)", "test_error_html_required_html_classes (forms_tests.tests.test_forms.FormsTestCase)", "test_error_list (forms_tests.tests.test_forms.FormsTestCase)", "test_error_list_class_has_one_class_specified (forms_tests.tests.test_forms.FormsTestCase)", "test_error_list_class_not_specified (forms_tests.tests.test_forms.FormsTestCase)", "test_error_list_with_hidden_field_errors_has_correct_class (forms_tests.tests.test_forms.FormsTestCase)", "test_error_list_with_non_field_errors_has_correct_class (forms_tests.tests.test_forms.FormsTestCase)", "test_errorlist_override (forms_tests.tests.test_forms.FormsTestCase)", "test_escaping (forms_tests.tests.test_forms.FormsTestCase)", "test_explicit_field_order (forms_tests.tests.test_forms.FormsTestCase)", "test_extracting_hidden_and_visible (forms_tests.tests.test_forms.FormsTestCase)", "test_field_deep_copy_error_messages (forms_tests.tests.test_forms.FormsTestCase)", "#5749 - `field_name` may be used as a key in _html_output().", "test_field_name_with_hidden_input (forms_tests.tests.test_forms.FormsTestCase)", "test_field_name_with_hidden_input_and_non_matching_row_ender (forms_tests.tests.test_forms.FormsTestCase)", "test_field_named_data (forms_tests.tests.test_forms.FormsTestCase)", "test_field_order (forms_tests.tests.test_forms.FormsTestCase)", "test_field_with_css_class (forms_tests.tests.test_forms.FormsTestCase)", "test_field_without_css_classes (forms_tests.tests.test_forms.FormsTestCase)", "test_filefield_initial_callable (forms_tests.tests.test_forms.FormsTestCase)", "test_form (forms_tests.tests.test_forms.FormsTestCase)", "test_form_html_attributes (forms_tests.tests.test_forms.FormsTestCase)", "test_form_with_disabled_fields (forms_tests.tests.test_forms.FormsTestCase)", "test_form_with_iterable_boundfield (forms_tests.tests.test_forms.FormsTestCase)", "test_form_with_iterable_boundfield_id (forms_tests.tests.test_forms.FormsTestCase)", "test_form_with_noniterable_boundfield (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_choices (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_file_fields (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_multiple_choice (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_null_boolean (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_prefixes (forms_tests.tests.test_forms.FormsTestCase)", "test_forms_with_radio (forms_tests.tests.test_forms.FormsTestCase)", "test_get_initial_for_field (forms_tests.tests.test_forms.FormsTestCase)", "test_has_error (forms_tests.tests.test_forms.FormsTestCase)", "test_help_text (forms_tests.tests.test_forms.FormsTestCase)", "test_hidden_data (forms_tests.tests.test_forms.FormsTestCase)", "test_hidden_initial_gets_id (forms_tests.tests.test_forms.FormsTestCase)", "test_hidden_widget (forms_tests.tests.test_forms.FormsTestCase)", "test_html_safe (forms_tests.tests.test_forms.FormsTestCase)", "test_id_on_field (forms_tests.tests.test_forms.FormsTestCase)", "test_initial_data (forms_tests.tests.test_forms.FormsTestCase)", "test_initial_datetime_values (forms_tests.tests.test_forms.FormsTestCase)", "test_iterable_boundfield_select (forms_tests.tests.test_forms.FormsTestCase)", "test_label_has_required_css_class (forms_tests.tests.test_forms.FormsTestCase)", "test_label_split_datetime_not_displayed (forms_tests.tests.test_forms.FormsTestCase)", "test_label_suffix (forms_tests.tests.test_forms.FormsTestCase)", "test_label_tag_override (forms_tests.tests.test_forms.FormsTestCase)", "test_multipart_encoded_form (forms_tests.tests.test_forms.FormsTestCase)", "test_multiple_choice_checkbox (forms_tests.tests.test_forms.FormsTestCase)", "test_multiple_choice_list_data (forms_tests.tests.test_forms.FormsTestCase)", "test_multiple_hidden (forms_tests.tests.test_forms.FormsTestCase)", "test_multivalue_deep_copy (forms_tests.tests.test_forms.FormsTestCase)", "test_multivalue_field_validation (forms_tests.tests.test_forms.FormsTestCase)", "test_multivalue_initial_data (forms_tests.tests.test_forms.FormsTestCase)", "test_multivalue_optional_subfields (forms_tests.tests.test_forms.FormsTestCase)", "test_only_hidden_fields (forms_tests.tests.test_forms.FormsTestCase)", "test_optional_data (forms_tests.tests.test_forms.FormsTestCase)", "test_specifying_labels (forms_tests.tests.test_forms.FormsTestCase)", "test_subclassing_forms (forms_tests.tests.test_forms.FormsTestCase)", "test_templates_with_forms (forms_tests.tests.test_forms.FormsTestCase)", "test_unbound_form (forms_tests.tests.test_forms.FormsTestCase)", "test_unicode_values (forms_tests.tests.test_forms.FormsTestCase)", "test_update_error_dict (forms_tests.tests.test_forms.FormsTestCase)", "test_use_required_attribute_false (forms_tests.tests.test_forms.FormsTestCase)", "test_use_required_attribute_true (forms_tests.tests.test_forms.FormsTestCase)", "test_validating_multiple_fields (forms_tests.tests.test_forms.FormsTestCase)", "test_validators_independence (forms_tests.tests.test_forms.FormsTestCase)", "test_various_boolean_values (forms_tests.tests.test_forms.FormsTestCase)", "test_widget_output (forms_tests.tests.test_forms.FormsTestCase)"]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          ["forms_tests.tests.test_forms", "forms_tests.widget_tests.test_fileinput"]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef run_tests(label, tests):\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    print(\"Running {}: {}\".format(label, cmd), flush=True)\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if re.search(r\"[\\\\/]\", path) or path.endswith(\".py\"):\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            repaired = value + \"]\"\n            if not _has_unbalanced_brackets(repaired) and not _has_space_outside_brackets(repaired):\n                log(\"Repairing unbalanced brackets for {}: {} -> {}\".format(label, repr(value), repr(repaired)))\n                value = repaired\n            else:\n                fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n                if fallback and not _has_space_outside_brackets(fallback):\n                    log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                    value = fallback\n                else:\n                    skipped.append(value)\n                    continue\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return valid\n\ndef looks_qualified(labels):\n    return any(isinstance(l, str) and any(x in l for x in (\"::\", \"/\", \".\")) for l in labels)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = (fail_to_pass or pass_to_pass) and (\n    \"pytest\" in test_cmd or \"py.test\" in test_cmd or looks_qualified(fail_to_pass + pass_to_pass)\n)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
