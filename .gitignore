@@ -79,3 +79,8 @@ doc/team-panel.txt
 doc/external-examples-gallery.txt
 doc/notebooks-examples-gallery.txt
 doc/videos-gallery.txt
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
