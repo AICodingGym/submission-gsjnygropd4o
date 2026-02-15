@@ -67,3 +67,8 @@ benchmarks/bench_covertype_data/
 .cache
 .pytest_cache/
 _configtest.o.d
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
