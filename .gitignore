@@ -97,3 +97,8 @@ sklearn/metrics/_pairwise_distances_reduction/_middle_term_computer.pxd
 sklearn/metrics/_pairwise_distances_reduction/_middle_term_computer.pyx
 sklearn/metrics/_pairwise_distances_reduction/_radius_neighbors.pxd
 sklearn/metrics/_pairwise_distances_reduction/_radius_neighbors.pyx
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
