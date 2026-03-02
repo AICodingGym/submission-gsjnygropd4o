@@ -1,0 +1,421 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "matplotlib__matplotlib-20488"
+      REPO: "matplotlib/matplotlib"
+      VERSION: "3.4"
+      BASE_COMMIT: "b7ce415c15eb39b026a097a2865da73fbcf15c9c"
+      ENV_SETUP_COMMIT: "f93c0a3dcb82feed0262d758626c90d4002685f3"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'lib/matplotlib/tests/test_image.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.8"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2025.2.25=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py38h06a4308_0
+            - python=3.8.20=he870216_0
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py38h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py38h06a4308_0
+            - xz=5.6.4=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - accessible-pygments==0.0.4
+                - alabaster==0.7.13
+                - asttokens==3.0.0
+                - attrs==25.1.0
+                - babel==2.17.0
+                - backcall==0.2.0
+                - beautifulsoup4==4.13.3
+                - bleach==6.1.0
+                - certifi==2025.1.31
+                - charset-normalizer==3.4.1
+                - colorspacious==1.1.2
+                - comm==0.2.2
+                - contourpy==1.1.1
+                - coverage==7.6.1
+                - cycler==0.12.1
+                - debugpy==1.8.12
+                - decorator==5.2.1
+                - defusedxml==0.7.1
+                - deprecated==1.2.18
+                - docutils==0.17.1
+                - exceptiongroup==1.2.2
+                - execnet==2.1.1
+                - executing==2.2.0
+                - fastjsonschema==2.21.1
+                - flake8==7.1.2
+                - flake8-docstrings==1.7.0
+                - fonttools==4.56.0
+                - idna==3.10
+                - imagesize==1.4.1
+                - importlib-metadata==8.5.0
+                - importlib-resources==6.4.5
+                - iniconfig==2.0.0
+                - ipykernel==6.29.5
+                - ipython==8.12.3
+                - ipywidgets==8.1.5
+                - jedi==0.19.2
+                - jinja2==3.1.5
+                - jsonschema==4.23.0
+                - jsonschema-specifications==2023.12.1
+                - jupyter-client==8.6.3
+                - jupyter-core==5.7.2
+                - jupyterlab-pygments==0.3.0
+                - jupyterlab-widgets==3.0.13
+                - kiwisolver==1.4.7
+                - lxml==5.3.1
+                - markupsafe==2.1.5
+                - mccabe==0.7.0
+                - mistune==3.1.2
+                - mpl-sphinx-theme==3.9.0
+                - nbclient==0.10.1
+                - nbconvert==7.16.6
+                - nbformat==5.10.4
+                - nest-asyncio==1.6.0
+                - numpy==1.24.4
+                - numpydoc==1.5.0
+                - packaging==24.2
+                - pandas==2.0.3
+                - pandocfilters==1.5.1
+                - parso==0.8.4
+                - pexpect==4.9.0
+                - pickleshare==0.7.5
+                - pikepdf==9.2.1
+                - pillow==10.4.0
+                - pkgutil-resolve-name==1.3.10
+                - platformdirs==4.3.6
+                - pluggy==1.5.0
+                - prompt-toolkit==3.0.50
+                - psutil==7.0.0
+                - ptyprocess==0.7.0
+                - pure-eval==0.2.3
+                - pycodestyle==2.12.1
+                - pydata-sphinx-theme==0.13.3
+                - pydocstyle==6.3.0
+                - pyflakes==3.2.0
+                - pygments==2.19.1
+                - pyparsing==2.4.7
+                - pytest==8.3.4
+                - pytest-cov==5.0.0
+                - pytest-rerunfailures==14.0
+                - pytest-timeout==2.3.1
+                - pytest-xdist==3.6.1
+                - python-dateutil==2.9.0.post0
+                - pytz==2025.1
+                - pyzmq==26.2.1
+                - referencing==0.35.1
+                - requests==2.32.3
+                - rpds-py==0.20.1
+                - scipy==1.10.1
+                - setuptools-scm==8.2.0
+                - six==1.17.0
+                - snowballstemmer==2.2.0
+                - soupsieve==2.6
+                - sphinx==4.2.0
+                - sphinx-copybutton==0.5.2
+                - sphinx-gallery==0.16.0
+                - sphinx-panels==0.6.0
+                - sphinxcontrib-applehelp==1.0.4
+                - sphinxcontrib-devhelp==1.0.2
+                - sphinxcontrib-htmlhelp==2.0.1
+                - sphinxcontrib-jsmath==1.0.1
+                - sphinxcontrib-qthelp==1.0.3
+                - sphinxcontrib-serializinghtml==1.1.5
+                - sphinxcontrib-svg2pdfconverter==1.2.3
+                - stack-data==0.6.3
+                - tinycss2==1.2.1
+                - tomli==2.2.1
+                - tornado==6.4.2
+                - traitlets==5.14.3
+                - typing-extensions==4.12.2
+                - tzdata==2025.1
+                - urllib3==2.2.3
+                - wcwidth==0.2.13
+                - webencodings==0.5.1
+                - widgetsnbextension==4.0.13
+                - wrapt==1.17.2
+                - zipp==3.20.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install pytest ipython
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          sudo apt-get -y update && sudo apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive sudo apt-get install -y imagemagick ffmpeg libfreetype6-dev pkg-config texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex texlive-luatex cm-super
+          QHULL_URL="http://www.qhull.org/download/qhull-2020-src-8.0.2.tgz"
+          QHULL_TAR="/tmp/qhull-2020-src-8.0.2.tgz"
+          QHULL_BUILD_DIR="$GITHUB_WORKSPACE/build"
+          wget -O "$QHULL_TAR" "$QHULL_URL"
+          mkdir -p "$QHULL_BUILD_DIR"
+          tar -xvzf "$QHULL_TAR" -C "$QHULL_BUILD_DIR"
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/lib/matplotlib/tests/test_image.py b/lib/matplotlib/tests/test_image.py
+          --- a/lib/matplotlib/tests/test_image.py
+          +++ b/lib/matplotlib/tests/test_image.py
+          @@ -1233,23 +1233,24 @@ def test_imshow_quantitynd():
+               fig.canvas.draw()
+           
+           
+          +@pytest.mark.parametrize('x', [-1, 1])
+           @check_figures_equal(extensions=['png'])
+          -def test_huge_range_log(fig_test, fig_ref):
+          -    data = np.full((5, 5), -1, dtype=np.float64)
+          +def test_huge_range_log(fig_test, fig_ref, x):
+          +    # parametrize over bad lognorm -1 values and large range 1 -> 1e20
+          +    data = np.full((5, 5), x, dtype=np.float64)
+               data[0:2, :] = 1E20
+           
+               ax = fig_test.subplots()
+          -    im = ax.imshow(data, norm=colors.LogNorm(vmin=100, vmax=data.max()),
+          -                   interpolation='nearest', cmap='viridis')
+          +    ax.imshow(data, norm=colors.LogNorm(vmin=1, vmax=data.max()),
+          +              interpolation='nearest', cmap='viridis')
+           
+          -    data = np.full((5, 5), -1, dtype=np.float64)
+          +    data = np.full((5, 5), x, dtype=np.float64)
+               data[0:2, :] = 1000
+           
+          -    cmap = copy(plt.get_cmap('viridis'))
+          -    cmap.set_under('w')
+               ax = fig_ref.subplots()
+          -    im = ax.imshow(data, norm=colors.Normalize(vmin=100, vmax=data.max()),
+          -                   interpolation='nearest', cmap=cmap)
+          +    cmap = plt.get_cmap('viridis').with_extremes(under='w')
+          +    ax.imshow(data, norm=colors.Normalize(vmin=1, vmax=data.max()),
+          +              interpolation='nearest', cmap=cmap)
+           
+           
+           @check_figures_equal()
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "lib/matplotlib/tests/test_image.py::test_huge_range_log[png--1]"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "lib/matplotlib/tests/test_image.py::test_image_interps[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_interps[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_alpha_interp[png]",
+            "lib/matplotlib/tests/test_image.py::test_figimage[png-False]",
+            "lib/matplotlib/tests/test_image.py::test_figimage[png-True]",
+            "lib/matplotlib/tests/test_image.py::test_figimage[pdf-False]",
+            "lib/matplotlib/tests/test_image.py::test_figimage[pdf-True]",
+            "lib/matplotlib/tests/test_image.py::test_image_python_io",
+            "lib/matplotlib/tests/test_image.py::test_imshow_antialiased[png-5-2-hanning]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_antialiased[png-5-5-nearest]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_antialiased[png-5-10-nearest]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_antialiased[png-3-2.9-hanning]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_antialiased[png-3-9.1-nearest]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_zoom[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_pil[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_pil[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_imread_pil_uint16",
+            "lib/matplotlib/tests/test_image.py::test_imread_fspath",
+            "lib/matplotlib/tests/test_image.py::test_imsave[png]",
+            "lib/matplotlib/tests/test_image.py::test_imsave[jpg]",
+            "lib/matplotlib/tests/test_image.py::test_imsave[jpeg]",
+            "lib/matplotlib/tests/test_image.py::test_imsave[tiff]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_fspath[png]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_fspath[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_fspath[ps]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_fspath[eps]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_fspath[svg]",
+            "lib/matplotlib/tests/test_image.py::test_imsave_color_alpha",
+            "lib/matplotlib/tests/test_image.py::test_imsave_pil_kwargs_png",
+            "lib/matplotlib/tests/test_image.py::test_imsave_pil_kwargs_tiff",
+            "lib/matplotlib/tests/test_image.py::test_image_alpha[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_alpha[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_cursor_data",
+            "lib/matplotlib/tests/test_image.py::test_format_cursor_data[data0-[1e+04]-[10001]]",
+            "lib/matplotlib/tests/test_image.py::test_format_cursor_data[data1-[0.123]-[0.123]]",
+            "lib/matplotlib/tests/test_image.py::test_image_clip[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_cliprect[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_10_10_1[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_10_10_2",
+            "lib/matplotlib/tests/test_image.py::test_imshow_10_10_5",
+            "lib/matplotlib/tests/test_image.py::test_no_interpolation_origin[png]",
+            "lib/matplotlib/tests/test_image.py::test_no_interpolation_origin[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_image_shift[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_image_edges",
+            "lib/matplotlib/tests/test_image.py::test_image_composite_background[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_composite_alpha[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_composite_alpha[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_clip_path_disables_compositing[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_bbox_image_inverted[png]",
+            "lib/matplotlib/tests/test_image.py::test_get_window_extent_for_AxisImage",
+            "lib/matplotlib/tests/test_image.py::test_zoom_and_clip_upper_origin[png]",
+            "lib/matplotlib/tests/test_image.py::test_nonuniformimage_setcmap",
+            "lib/matplotlib/tests/test_image.py::test_nonuniformimage_setnorm",
+            "lib/matplotlib/tests/test_image.py::test_jpeg_2d",
+            "lib/matplotlib/tests/test_image.py::test_jpeg_alpha",
+            "lib/matplotlib/tests/test_image.py::test_axesimage_setdata",
+            "lib/matplotlib/tests/test_image.py::test_figureimage_setdata",
+            "lib/matplotlib/tests/test_image.py::test_setdata_xya[NonUniformImage-x0-y0-a0]",
+            "lib/matplotlib/tests/test_image.py::test_setdata_xya[PcolorImage-x1-y1-a1]",
+            "lib/matplotlib/tests/test_image.py::test_minimized_rasterized",
+            "lib/matplotlib/tests/test_image.py::test_load_from_url",
+            "lib/matplotlib/tests/test_image.py::test_log_scale_image[png]",
+            "lib/matplotlib/tests/test_image.py::test_log_scale_image[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_rotate_image[png]",
+            "lib/matplotlib/tests/test_image.py::test_rotate_image[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_image_preserve_size",
+            "lib/matplotlib/tests/test_image.py::test_image_preserve_size2",
+            "lib/matplotlib/tests/test_image.py::test_mask_image_over_under[png]",
+            "lib/matplotlib/tests/test_image.py::test_mask_image[png]",
+            "lib/matplotlib/tests/test_image.py::test_mask_image_all",
+            "lib/matplotlib/tests/test_image.py::test_imshow_endianess[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_masked_interpolation[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_masked_interpolation[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_no_warn_invalid",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype0]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype1]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype2]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype3]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype4]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype5]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_clips_rgb_to_valid_range[dtype6]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_flatfield[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_bignumbers[png]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_bignumbers_real[png]",
+            "lib/matplotlib/tests/test_image.py::test_empty_imshow[Normalize]",
+            "lib/matplotlib/tests/test_image.py::test_empty_imshow[LogNorm]",
+            "lib/matplotlib/tests/test_image.py::test_empty_imshow[<lambda>0]",
+            "lib/matplotlib/tests/test_image.py::test_empty_imshow[<lambda>1]",
+            "lib/matplotlib/tests/test_image.py::test_imshow_float16",
+            "lib/matplotlib/tests/test_image.py::test_imshow_float128",
+            "lib/matplotlib/tests/test_image.py::test_imshow_bool",
+            "lib/matplotlib/tests/test_image.py::test_composite[True-1-ps-",
+            "lib/matplotlib/tests/test_image.py::test_composite[True-1-svg-<image]",
+            "lib/matplotlib/tests/test_image.py::test_composite[False-2-ps-",
+            "lib/matplotlib/tests/test_image.py::test_composite[False-2-svg-<image]",
+            "lib/matplotlib/tests/test_image.py::test_relim",
+            "lib/matplotlib/tests/test_image.py::test_unclipped",
+            "lib/matplotlib/tests/test_image.py::test_respects_bbox",
+            "lib/matplotlib/tests/test_image.py::test_image_cursor_formatting",
+            "lib/matplotlib/tests/test_image.py::test_image_array_alpha[png]",
+            "lib/matplotlib/tests/test_image.py::test_image_array_alpha[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_image_array_alpha_validation",
+            "lib/matplotlib/tests/test_image.py::test_exact_vmin",
+            "lib/matplotlib/tests/test_image.py::test_https_imread_smoketest",
+            "lib/matplotlib/tests/test_image.py::test_quantitynd",
+            "lib/matplotlib/tests/test_image.py::test_huge_range_log[png-1]",
+            "lib/matplotlib/tests/test_image.py::test_spy_box[png]",
+            "lib/matplotlib/tests/test_image.py::test_spy_box[pdf]",
+            "lib/matplotlib/tests/test_image.py::test_nonuniform_and_pcolor[png]"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "lib/matplotlib/tests/test_image.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
