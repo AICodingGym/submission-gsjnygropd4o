@@ -1,0 +1,378 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "astropy__astropy-14598"
+      REPO: "astropy/astropy"
+      VERSION: "5.2"
+      BASE_COMMIT: "80c3854a5f4f4a6ab86c03d9db7854767fcd83c1"
+      ENV_SETUP_COMMIT: "362f6df12abf9bd769d4915fabf955c993ea22cf"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'astropy/io/fits/tests/test_header.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - attrs==23.1.0
+                - coverage==7.6.2
+                - exceptiongroup==1.1.3
+                - execnet==2.0.2
+                - hypothesis==6.82.6
+                - iniconfig==2.0.0
+                - numpy==1.25.2
+                - packaging==23.1
+                - pluggy==1.3.0
+                - psutil==5.9.5
+                - pyerfa==2.0.0.3
+                - pytest==7.4.0
+                - pytest-arraydiff==0.5.0
+                - pytest-astropy==0.10.0
+                - pytest-astropy-header==0.2.2
+                - pytest-cov==4.1.0
+                - pytest-doctestplus==1.0.0
+                - pytest-filter-subpackage==0.1.2
+                - pytest-mock==3.11.1
+                - pytest-openfiles==0.5.0
+                - pytest-remotedata==0.4.0
+                - pytest-xdist==3.3.1
+                - pyyaml==6.0.1
+                - setuptools==68.0.0
+                - sortedcontainers==2.4.0
+                - tomli==2.0.1
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install attrs==23.1.0 exceptiongroup==1.1.3 execnet==2.0.2 hypothesis==6.82.6 iniconfig==2.0.0 numpy==1.25.2 packaging==23.1 pluggy==1.3.0 psutil==5.9.5 pyerfa==2.0.0.3 pytest-arraydiff==0.5.0 pytest-astropy-header==0.2.2 pytest-astropy==0.10.0 pytest-cov==4.1.0 pytest-doctestplus==1.0.0 pytest-filter-subpackage==0.1.2 pytest-mock==3.11.1 pytest-openfiles==0.5.0 pytest-remotedata==0.4.0 pytest-xdist==3.3.1 pytest==7.4.0 PyYAML==6.0.1 setuptools==68.0.0 sortedcontainers==2.4.0 tomli==2.0.1
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          sed -i 's/requires = \["setuptools",/requires = \["setuptools==68.0.0",/' pyproject.toml
+          python -m pip install -e .[test] --verbose
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/astropy/io/fits/tests/test_header.py b/astropy/io/fits/tests/test_header.py
+          --- a/astropy/io/fits/tests/test_header.py
+          +++ b/astropy/io/fits/tests/test_header.py
+          @@ -582,6 +582,22 @@ def test_long_string_value_via_fromstring(self, capsys):
+                           "CONTINUE  '' / comments in line 1 comments with ''.                             "
+                       )
+           
+          +    def test_long_string_value_with_quotes(self):
+          +        testval = "x" * 100 + "''"
+          +        c = fits.Card("TEST", testval)
+          +        c = fits.Card.fromstring(c.image)
+          +        assert c.value == testval
+          +
+          +        testval = "x" * 100 + "''xxx"
+          +        c = fits.Card("TEST", testval)
+          +        c = fits.Card.fromstring(c.image)
+          +        assert c.value == testval
+          +
+          +        testval = "x" * 100 + "'' xxx"
+          +        c = fits.Card("TEST", testval)
+          +        c = fits.Card.fromstring(c.image)
+          +        assert c.value == testval
+          +
+               def test_continue_card_with_equals_in_value(self):
+                   """
+                   Regression test for https://aeon.stsci.edu/ssb/trac/pyfits/ticket/117
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_value_with_quotes"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "astropy/io/fits/tests/test_header.py::test_shallow_copy",
+            "astropy/io/fits/tests/test_header.py::test_init_with_header",
+            "astropy/io/fits/tests/test_header.py::test_init_with_dict",
+            "astropy/io/fits/tests/test_header.py::test_init_with_ordereddict",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_rename_keyword",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_indexing_case[A]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_indexing_case[a]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_card_constructor_default_args",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_card_from_bytes",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_string_value_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_boolean_value_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_integer_value_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_floating_point_value_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_floating_point_string_representation_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_complex_value_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_card_image_constructed_too_long",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_constructor_filter_illegal_data_structures",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_keyword_too_long",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_illegal_characters_in_key",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_add_history",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_add_blank",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_comment",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_commentary_cards",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_commentary_card_created_by_fromstring",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_commentary_card_will_not_parse_numerical_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_equal_sign_after_column8",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_blank_keyword",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_specify_undefined_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_complex_number_using_string_input",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_fixable_non_standard_fits_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_fixable_non_fsc",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_undefined_value_using_string_input",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_undefined_keys_values",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_mislocated_equal_sign",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_equal_only_up_to_column_10",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_verify_invalid_equal_sign",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_fix_invalid_equal_sign",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_value_with_multiple_long_words",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_unicode_string",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_repr",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_blank_keyword_long_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_from_file",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_word_in_long_string_too_long",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_string_value_via_fromstring",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_continue_card_with_equals_in_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_final_continue_card_lacks_ampersand",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_final_continue_card_ampersand_removal_on_long_comments",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_card_creation",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_with_abbrev_value_indicator",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_not_warn",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_keyword_whitespace",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_verify_mixed_case_hierarch",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_missing_keyword",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_card_lookup",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_card_delete",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_card_insert_delete",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_hierarch_create_and_update",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_short_hierarch_create_and_update",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_setitem_invalid",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_setitem_1tuple",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_setitem_2tuple",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_set_value_to_none",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_set_comment_only",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_iter",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_slice",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_slice_assignment",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_slice_delete",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_wildcard_slice",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_wildcard_with_hyphen",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_wildcard_slice_assignment",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_wildcard_slice_deletion",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_history",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_clear",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_clear_write[fitsext0]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_clear_write[fitsext1]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromkeys",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromkeys_with_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromkeys_with_value_and_comment",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromkeys_with_duplicates",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_items",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_iterkeys",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_itervalues",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_keys",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_list_like_pop",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_dict_like_pop",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_popitem",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_setdefault",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_from_dict",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_from_iterable",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend_unique",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend_unique_commentary",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend_update",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend_update_commentary",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_extend_exact",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_count",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_append_use_blanks",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_append_keyword_only",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_insert_use_blanks",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_insert_before_keyword",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_remove",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_comments",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_comment_slices_and_filters",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_comment_slice_filter_assign",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_commentary_slicing",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_commentary",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_commentary_comparison",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_commentary_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_totxtfile[]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_totxtfile[home_is_data]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_totxtfile[home_is_data,",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_tofile[]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_tofile[home_is_data]",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_tofile[home_is_data,",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_fromfile",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromtextfile",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromtextfile_with_end_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_append_end_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_invalid_end_cards",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_invalid_characters",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_unnecessary_move",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_invalid_float_cards",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_invalid_float_cards2",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_leading_zeros",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_assign_boolean",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_method_keyword_normalization",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_end_in_comment",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_assign_unicode",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_assign_non_ascii",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_strip_whitespace",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_keep_duplicate_history_in_orig_header",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_invalid_keyword_cards",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_fix_hierarch_with_invalid_value",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_assign_inf_nan",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_bool",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_numeric",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_newlines_in_commentary",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_long_commentary_card_appended_to_header",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_fromstring_bytes",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_set_keyword_with_space",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_strip",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_update_invalid_card",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_index_numpy_int",
+            "astropy/io/fits/tests/test_header.py::TestHeaderFunctions::test_header_data_size",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_initialize_rvkc",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_parse_field_specifier",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_update_field_specifier",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_field_specifier_case_senstivity",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_get_rvkc_by_index",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_get_rvkc_by_keyword",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_get_rvkc_by_keyword_and_field_specifier",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_access_nonexistent_rvkc",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_update_rvkc",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_update_rvkc_2",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_raw_keyword_value",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_rvkc_insert_after",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_rvkc_delete",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_pattern_matching_keys",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_pattern_matching_key_deletion",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_successive_pattern_matching",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_rvkc_in_cardlist_keys",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_rvkc_in_cardlist_values",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_rvkc_value_attribute",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_overly_permissive_parsing",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_overly_aggressive_rvkc_lookup",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_fitsheader_script",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_fitsheader_compressed_from_primary_image_ext",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_fitsheader_table_feature",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_hdu_writeto_mode[wb]",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_hdu_writeto_mode[wb+]",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_hdu_writeto_mode[ab]",
+            "astropy/io/fits/tests/test_header.py::TestRecordValuedKeywordCards::test_hdu_writeto_mode[ab+]",
+            "astropy/io/fits/tests/test_header.py::test_subclass"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "astropy/io/fits/tests/test_header.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
