@@ -1,0 +1,369 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "pylint-dev__pylint-7080"
+      REPO: "pylint-dev/pylint"
+      VERSION: "2.15"
+      BASE_COMMIT: "3c5eca2ded3dd2b59ebaf23eb289453b5d2930f0"
+      ENV_SETUP_COMMIT: "e90702074e68e20dc8e5df5013ee3ecf22139c3e"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'tests/test_self.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - astroid==2.11.7
+                - black==22.6.0
+                - cachetools==5.5.0
+                - certifi==2024.8.30
+                - cfgv==3.4.0
+                - chardet==5.2.0
+                - charset-normalizer==3.4.0
+                - cli-ui==0.17.2
+                - click==8.1.7
+                - click-default-group==1.2.4
+                - colorama==0.4.6
+                - contributors-txt==1.0.0
+                - coverage==6.5.0
+                - coveralls==3.3.1
+                - dill==0.3.9
+                - distlib==0.3.9
+                - docopt==0.6.2
+                - exceptiongroup==1.2.2
+                - execnet==2.1.1
+                - filelock==3.16.1
+                - flake8==5.0.4
+                - flake8-typing-imports==1.13.0
+                - gprof2dot==2024.6.6
+                - identify==2.6.1
+                - idna==3.10
+                - incremental==24.7.2
+                - iniconfig==2.0.0
+                - isort==5.10.1
+                - jinja2==3.1.4
+                - lazy-object-proxy==1.10.0
+                - markupsafe==3.0.2
+                - mccabe==0.7.0
+                - mypy==0.971
+                - mypy-extensions==1.0.0
+                - nodeenv==1.9.1
+                - packaging==24.1
+                - pathspec==0.12.1
+                - platformdirs==4.3.6
+                - pluggy==1.5.0
+                - pre-commit==2.21.0
+                - py==1.11.0
+                - py-cpuinfo==9.0.0
+                - pycodestyle==2.9.1
+                - pyflakes==2.5.0
+                - pyproject-api==1.8.0
+                - pytest==7.4.4
+                - pytest-benchmark==4.0.0
+                - pytest-cov==3.0.0
+                - pytest-forked==1.6.0
+                - pytest-profiling==1.7.0
+                - pytest-timeout==2.3.1
+                - pytest-xdist==2.5.0
+                - pyyaml==6.0.2
+                - requests==2.32.3
+                - schema==0.7.7
+                - six==1.16.0
+                - tabulate==0.8.10
+                - tbump==6.9.0
+                - tomli==2.0.2
+                - tomlkit==0.13.2
+                - towncrier==22.12.0
+                - tox==4.23.2
+                - types-pkg-resources==0.1.3
+                - typing-extensions==4.12.2
+                - unidecode==1.3.8
+                - urllib3==2.2.3
+                - virtualenv==20.27.0
+                - wrapt==1.16.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/test_self.py b/tests/test_self.py
+          --- a/tests/test_self.py
+          +++ b/tests/test_self.py
+          @@ -1330,6 +1330,27 @@ def test_recursive_current_dir(self):
+                               code=0,
+                           )
+           
+          +    def test_ignore_path_recursive_current_dir(self) -> None:
+          +        """Tests that path is normalized before checked that is ignored. GitHub issue #6964"""
+          +        with _test_sys_path():
+          +            # pytest is including directory HERE/regrtest_data to sys.path which causes
+          +            # astroid to believe that directory is a package.
+          +            sys.path = [
+          +                path
+          +                for path in sys.path
+          +                if not os.path.basename(path) == "regrtest_data"
+          +            ]
+          +            with _test_cwd():
+          +                os.chdir(join(HERE, "regrtest_data", "directory"))
+          +                self._runtest(
+          +                    [
+          +                        ".",
+          +                        "--recursive=y",
+          +                        "--ignore-paths=^ignored_subdirectory/.*",
+          +                    ],
+          +                    code=0,
+          +                )
+          +
+               def test_regression_recursive_current_dir(self):
+                   with _test_sys_path():
+                       # pytest is including directory HERE/regrtest_data to sys.path which causes
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "tests/test_self.py::TestRunTC::test_ignore_path_recursive_current_dir"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "tests/test_self.py::TestRunTC::test_pkginfo",
+            "tests/test_self.py::TestRunTC::test_all",
+            "tests/test_self.py::TestRunTC::test_no_ext_file",
+            "tests/test_self.py::TestRunTC::test_w0704_ignored",
+            "tests/test_self.py::TestRunTC::test_exit_zero",
+            "tests/test_self.py::TestRunTC::test_nonexistent_config_file",
+            "tests/test_self.py::TestRunTC::test_error_missing_arguments",
+            "tests/test_self.py::TestRunTC::test_no_out_encoding",
+            "tests/test_self.py::TestRunTC::test_parallel_execution",
+            "tests/test_self.py::TestRunTC::test_parallel_execution_missing_arguments",
+            "tests/test_self.py::TestRunTC::test_enable_all_works",
+            "tests/test_self.py::TestRunTC::test_wrong_import_position_when_others_disabled",
+            "tests/test_self.py::TestRunTC::test_import_itself_not_accounted_for_relative_imports",
+            "tests/test_self.py::TestRunTC::test_reject_empty_indent_strings",
+            "tests/test_self.py::TestRunTC::test_json_report_when_file_has_syntax_error",
+            "tests/test_self.py::TestRunTC::test_json_report_when_file_is_missing",
+            "tests/test_self.py::TestRunTC::test_json_report_does_not_escape_quotes",
+            "tests/test_self.py::TestRunTC::test_information_category_disabled_by_default",
+            "tests/test_self.py::TestRunTC::test_error_mode_shows_no_score",
+            "tests/test_self.py::TestRunTC::test_evaluation_score_shown_by_default",
+            "tests/test_self.py::TestRunTC::test_confidence_levels",
+            "tests/test_self.py::TestRunTC::test_bom_marker",
+            "tests/test_self.py::TestRunTC::test_pylintrc_plugin_duplicate_options",
+            "tests/test_self.py::TestRunTC::test_pylintrc_comments_in_values",
+            "tests/test_self.py::TestRunTC::test_no_crash_with_formatting_regex_defaults",
+            "tests/test_self.py::TestRunTC::test_getdefaultencoding_crashes_with_lc_ctype_utf8",
+            "tests/test_self.py::TestRunTC::test_parseable_file_path",
+            "tests/test_self.py::TestRunTC::test_stdin[/mymodule.py]",
+            "tests/test_self.py::TestRunTC::test_stdin[mymodule.py-mymodule-mymodule.py]",
+            "tests/test_self.py::TestRunTC::test_stdin_missing_modulename",
+            "tests/test_self.py::TestRunTC::test_relative_imports[False]",
+            "tests/test_self.py::TestRunTC::test_relative_imports[True]",
+            "tests/test_self.py::TestRunTC::test_stdin_syntaxerror",
+            "tests/test_self.py::TestRunTC::test_version",
+            "tests/test_self.py::TestRunTC::test_fail_under",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-missing-function-docstring-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[6-missing-function-docstring-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[7.5-missing-function-docstring-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[7.6-missing-function-docstring-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-11-missing-function-docstring-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-missing-function-docstring-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-9-missing-function-docstring-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-5-missing-function-docstring-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-broad-except-fail_under_plus7_5.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on[6-broad-except-fail_under_plus7_5.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on[7.5-broad-except-fail_under_plus7_5.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on[7.6-broad-except-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-11-broad-except-fail_under_minus10.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-broad-except-fail_under_minus10.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-9-broad-except-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-5-broad-except-fail_under_minus10.py-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-C0116-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-C-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-fake1,C,fake2-fail_under_plus7_5.py-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on[-10-C0115-fail_under_plus7_5.py-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_edge_case[opts0-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_edge_case[opts1-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_edge_case[opts2-16]",
+            "tests/test_self.py::TestRunTC::test_fail_on_edge_case[opts3-16]",
+            "tests/test_self.py::TestRunTC::test_modify_sys_path",
+            "tests/test_self.py::TestRunTC::test_do_not_import_files_from_local_directory",
+            "tests/test_self.py::TestRunTC::test_do_not_import_files_from_local_directory_with_pythonpath",
+            "tests/test_self.py::TestRunTC::test_import_plugin_from_local_directory_if_pythonpath_cwd",
+            "tests/test_self.py::TestRunTC::test_allow_import_of_files_found_in_modules_during_parallel_check",
+            "tests/test_self.py::TestRunTC::test_can_list_directories_without_dunder_init",
+            "tests/test_self.py::TestRunTC::test_regression_parallel_mode_without_filepath",
+            "tests/test_self.py::TestRunTC::test_output_file_valid_path",
+            "tests/test_self.py::TestRunTC::test_output_file_invalid_path_exits_with_code_32",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args0-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args1-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args2-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args3-6]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args4-6]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args5-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args6-22]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args7-6]",
+            "tests/test_self.py::TestRunTC::test_fail_on_exit_code[args8-22]",
+            "tests/test_self.py::TestRunTC::test_one_module_fatal_error",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args0-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args1-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args2-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args3-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args4-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args5-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args6-0]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args7-1]",
+            "tests/test_self.py::TestRunTC::test_fail_on_info_only_exit_code[args8-1]",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_output_format_option[text-tests/regrtest_data/unused_variable.py:4:4:",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_output_format_option[parseable-tests/regrtest_data/unused_variable.py:4:",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_output_format_option[msvs-tests/regrtest_data/unused_variable.py(4):",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_output_format_option[colorized-tests/regrtest_data/unused_variable.py:4:4:",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_output_format_option[json-\"message\":",
+            "tests/test_self.py::TestRunTC::test_output_file_can_be_combined_with_custom_reporter",
+            "tests/test_self.py::TestRunTC::test_output_file_specified_in_rcfile",
+            "tests/test_self.py::TestRunTC::test_load_text_repoter_if_not_provided",
+            "tests/test_self.py::TestRunTC::test_regex_paths_csv_validator",
+            "tests/test_self.py::TestRunTC::test_max_inferred_for_complicated_class_hierarchy",
+            "tests/test_self.py::TestRunTC::test_regression_recursive",
+            "tests/test_self.py::TestRunTC::test_recursive",
+            "tests/test_self.py::TestRunTC::test_ignore_recursive",
+            "tests/test_self.py::TestRunTC::test_ignore_pattern_recursive",
+            "tests/test_self.py::TestRunTC::test_ignore_path_recursive",
+            "tests/test_self.py::TestRunTC::test_recursive_current_dir",
+            "tests/test_self.py::TestRunTC::test_regression_recursive_current_dir",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command0-Emittable",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command1-Enabled",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command2-nonascii-checker]",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command3-Confidence(name='HIGH',",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command4-pylint.extensions.empty_comment]",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command5-Pylint",
+            "tests/test_self.py::TestCallbackOptions::test_output_of_callback_options[command6-Environment",
+            "tests/test_self.py::TestCallbackOptions::test_help_msg[args0-:unreachable",
+            "tests/test_self.py::TestCallbackOptions::test_help_msg[args1-No",
+            "tests/test_self.py::TestCallbackOptions::test_help_msg[args2---help-msg:",
+            "tests/test_self.py::TestCallbackOptions::test_generate_rcfile",
+            "tests/test_self.py::TestCallbackOptions::test_generate_config_disable_symbolic_names",
+            "tests/test_self.py::TestCallbackOptions::test_errors_only",
+            "tests/test_self.py::TestCallbackOptions::test_errors_only_functions_as_disable",
+            "tests/test_self.py::TestCallbackOptions::test_verbose",
+            "tests/test_self.py::TestCallbackOptions::test_enable_all_extensions"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "tests/test_self.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
