@@ -1,0 +1,368 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-11532"
+      REPO: "django/django"
+      VERSION: "3.0"
+      BASE_COMMIT: "a5308514fb4bc5086c9a16a8a24a945eeebb073c"
+      ENV_SETUP_COMMIT: "419a78300f7cd27611196e1e464d50fd0385ff27"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/mail/tests.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.6"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - certifi=2021.5.30=py36h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.3=he6710b0_2
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=1.1.1w=h7f8727e_0
+            - pip=21.2.2=py36h06a4308_0
+            - python=3.6.13=h12debd9_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=58.0.4=py36h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.37.1=pyhd3eb1b0_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohttp==3.8.6
+                - aiosignal==1.2.0
+                - argon2-cffi==21.3.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.4.1
+                - async-timeout==4.0.2
+                - asynctest==0.13.0
+                - attrs==22.2.0
+                - bcrypt==4.0.1
+                - cffi==1.15.1
+                - charset-normalizer==2.0.12
+                - dataclasses==0.8
+                - docutils==0.18.1
+                - frozenlist==1.2.0
+                - geoip2==4.6.0
+                - idna==3.10
+                - idna-ssl==1.1.0
+                - jinja2==3.0.3
+                - markupsafe==2.0.1
+                - maxminddb==2.2.0
+                - multidict==5.2.0
+                - numpy==1.19.5
+                - pillow==8.4.0
+                - pycparser==2.21
+                - pylibmc==1.6.3
+                - python-memcached==1.62
+                - pytz==2024.2
+                - pywatchman==1.4.1
+                - pyyaml==6.0.1
+                - requests==2.27.1
+                - selenium==3.141.0
+                - sqlparse==0.4.4
+                - tblib==1.7.0
+                - typing-extensions==4.1.1
+                - urllib3==1.26.20
+                - yarl==1.7.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/mail/tests.py b/tests/mail/tests.py
+          --- a/tests/mail/tests.py
+          +++ b/tests/mail/tests.py
+          @@ -14,10 +14,11 @@
+           from io import StringIO
+           from smtplib import SMTP, SMTPAuthenticationError, SMTPException
+           from ssl import SSLError
+          +from unittest import mock
+           
+           from django.core import mail
+           from django.core.mail import (
+          -    EmailMessage, EmailMultiAlternatives, mail_admins, mail_managers,
+          +    DNS_NAME, EmailMessage, EmailMultiAlternatives, mail_admins, mail_managers,
+               send_mail, send_mass_mail,
+           )
+           from django.core.mail.backends import console, dummy, filebased, locmem, smtp
+          @@ -365,6 +366,13 @@ def test_none_body(self):
+                   self.assertEqual(msg.body, '')
+                   self.assertEqual(msg.message().get_payload(), '')
+           
+          +    @mock.patch('socket.getfqdn', return_value='漢字')
+          +    def test_non_ascii_dns_non_unicode_email(self, mocked_getfqdn):
+          +        delattr(DNS_NAME, '_fqdn')
+          +        email = EmailMessage('subject', 'content', 'from@example.com', ['to@example.com'])
+          +        email.encoding = 'iso-8859-1'
+          +        self.assertIn('@xn--p8s937b>', email.message()['Message-ID'])
+          +
+               def test_encoding(self):
+                   """
+                   Regression for #12791 - Encode body correctly with other encodings
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+          export LANG=en_US.UTF-8
+          export LANGUAGE=en_US:en
+          export LC_ALL=en_US.UTF-8
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "test_non_ascii_dns_non_unicode_email (mail.tests.MailTests)"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "test_7bit (mail.tests.PythonGlobalState)",
+            "test_8bit_latin (mail.tests.PythonGlobalState)",
+            "test_8bit_non_latin (mail.tests.PythonGlobalState)",
+            "test_utf8 (mail.tests.PythonGlobalState)",
+            "test_date_header_localtime (mail.tests.MailTimeZoneTests)",
+            "test_date_header_utc (mail.tests.MailTimeZoneTests)",
+            "test_close_connection (mail.tests.LocmemBackendTests)",
+            "test_empty_admins (mail.tests.LocmemBackendTests)",
+            "Test html_message argument to mail_admins",
+            "Test html_message argument to mail_managers",
+            "Test html_message argument to send_mail",
+            "test_idn_send (mail.tests.LocmemBackendTests)",
+            "test_lazy_addresses (mail.tests.LocmemBackendTests)",
+            "test_locmem_shared_messages (mail.tests.LocmemBackendTests)",
+            "test_manager_and_admin_mail_prefix (mail.tests.LocmemBackendTests)",
+            "test_message_cc_header (mail.tests.LocmemBackendTests)",
+            "test_plaintext_send_mail (mail.tests.LocmemBackendTests)",
+            "test_recipient_without_domain (mail.tests.LocmemBackendTests)",
+            "test_send (mail.tests.LocmemBackendTests)",
+            "test_send_long_lines (mail.tests.LocmemBackendTests)",
+            "test_send_many (mail.tests.LocmemBackendTests)",
+            "test_send_unicode (mail.tests.LocmemBackendTests)",
+            "test_send_verbose_name (mail.tests.LocmemBackendTests)",
+            "test_use_as_contextmanager (mail.tests.LocmemBackendTests)",
+            "test_validate_multiline_headers (mail.tests.LocmemBackendTests)",
+            "test_wrong_admins_managers (mail.tests.LocmemBackendTests)",
+            "test_close_connection (mail.tests.FileBackendTests)",
+            "test_empty_admins (mail.tests.FileBackendTests)",
+            "Make sure opening a connection creates a new file",
+            "test_idn_send (mail.tests.FileBackendTests)",
+            "test_lazy_addresses (mail.tests.FileBackendTests)",
+            "test_manager_and_admin_mail_prefix (mail.tests.FileBackendTests)",
+            "test_message_cc_header (mail.tests.FileBackendTests)",
+            "test_plaintext_send_mail (mail.tests.FileBackendTests)",
+            "test_recipient_without_domain (mail.tests.FileBackendTests)",
+            "test_send (mail.tests.FileBackendTests)",
+            "test_send_long_lines (mail.tests.FileBackendTests)",
+            "test_send_many (mail.tests.FileBackendTests)",
+            "test_send_unicode (mail.tests.FileBackendTests)",
+            "test_send_verbose_name (mail.tests.FileBackendTests)",
+            "test_use_as_contextmanager (mail.tests.FileBackendTests)",
+            "test_wrong_admins_managers (mail.tests.FileBackendTests)",
+            "test_close_connection (mail.tests.ConsoleBackendTests)",
+            "test_console_stream_kwarg (mail.tests.ConsoleBackendTests)",
+            "test_empty_admins (mail.tests.ConsoleBackendTests)",
+            "test_idn_send (mail.tests.ConsoleBackendTests)",
+            "test_lazy_addresses (mail.tests.ConsoleBackendTests)",
+            "test_manager_and_admin_mail_prefix (mail.tests.ConsoleBackendTests)",
+            "test_message_cc_header (mail.tests.ConsoleBackendTests)",
+            "test_plaintext_send_mail (mail.tests.ConsoleBackendTests)",
+            "test_recipient_without_domain (mail.tests.ConsoleBackendTests)",
+            "test_send (mail.tests.ConsoleBackendTests)",
+            "test_send_long_lines (mail.tests.ConsoleBackendTests)",
+            "test_send_many (mail.tests.ConsoleBackendTests)",
+            "test_send_unicode (mail.tests.ConsoleBackendTests)",
+            "test_send_verbose_name (mail.tests.ConsoleBackendTests)",
+            "test_use_as_contextmanager (mail.tests.ConsoleBackendTests)",
+            "test_wrong_admins_managers (mail.tests.ConsoleBackendTests)",
+            "test_arbitrary_keyword (mail.tests.MailTests)",
+            "test_ascii (mail.tests.MailTests)",
+            "test_attach_file (mail.tests.MailTests)",
+            "test_attach_non_utf8_text_as_bytes (mail.tests.MailTests)",
+            "test_attach_text_as_bytes (mail.tests.MailTests)",
+            "test_attach_utf8_text_as_bytes (mail.tests.MailTests)",
+            "Regression test for #9367",
+            "test_attachments_MIMEText (mail.tests.MailTests)",
+            "test_attachments_two_tuple (mail.tests.MailTests)",
+            "Test backend argument of mail.get_connection()",
+            "Regression test for #7722",
+            "test_cc_headers (mail.tests.MailTests)",
+            "test_cc_in_headers_only (mail.tests.MailTests)",
+            "Test connection argument to send_mail(), et. al.",
+            "Test custom backend defined in this suite.",
+            "A UTF-8 charset with a custom body encoding is respected.",
+            "test_dont_base64_encode (mail.tests.MailTests)",
+            "test_dont_base64_encode_message_rfc822 (mail.tests.MailTests)",
+            "test_dont_mangle_from_in_body (mail.tests.MailTests)",
+            "test_dummy_backend (mail.tests.MailTests)",
+            "test_encoding (mail.tests.MailTests)",
+            "test_from_header (mail.tests.MailTests)",
+            "test_header_injection (mail.tests.MailTests)",
+            "test_header_omitted_for_no_to_recipients (mail.tests.MailTests)",
+            "test_message_header_overrides (mail.tests.MailTests)",
+            "test_multiple_message_call (mail.tests.MailTests)",
+            "test_multiple_recipients (mail.tests.MailTests)",
+            "Regression test for #14964",
+            "test_none_body (mail.tests.MailTests)",
+            "test_recipients_as_string (mail.tests.MailTests)",
+            "test_recipients_as_tuple (mail.tests.MailTests)",
+            "test_recipients_with_empty_strings (mail.tests.MailTests)",
+            "test_reply_to (mail.tests.MailTests)",
+            "test_reply_to_header (mail.tests.MailTests)",
+            "test_reply_to_in_headers_only (mail.tests.MailTests)",
+            "test_safe_mime_multipart (mail.tests.MailTests)",
+            "test_safe_mime_multipart_with_attachments (mail.tests.MailTests)",
+            "Email addresses are properly sanitized.",
+            "test_sanitize_address_invalid (mail.tests.MailTests)",
+            "test_space_continuation (mail.tests.MailTests)",
+            "test_to_header (mail.tests.MailTests)",
+            "test_to_in_headers_only (mail.tests.MailTests)",
+            "test_unicode_address_header (mail.tests.MailTests)",
+            "test_unicode_headers (mail.tests.MailTests)",
+            "test_fail_silently_on_connection_error (mail.tests.SMTPBackendStoppedServerTests)",
+            "test_server_stopped (mail.tests.SMTPBackendStoppedServerTests)",
+            "test_auth_attempted (mail.tests.SMTPBackendTests)",
+            "test_close_connection (mail.tests.SMTPBackendTests)",
+            "The timeout parameter can be customized.",
+            "The connection's timeout value is None by default.",
+            "test_email_authentication_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_authentication_use_settings (mail.tests.SMTPBackendTests)",
+            "test_email_disabled_authentication (mail.tests.SMTPBackendTests)",
+            "#23063 -- RFC-compliant messages are sent over SMTP.",
+            "test_email_ssl_attempts_ssl_connection (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_certfile_default_disabled (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_certfile_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_certfile_use_settings (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_default_disabled (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_keyfile_default_disabled (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_keyfile_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_keyfile_use_settings (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_ssl_use_settings (mail.tests.SMTPBackendTests)",
+            "test_email_timeout_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_tls_attempts_starttls (mail.tests.SMTPBackendTests)",
+            "test_email_tls_default_disabled (mail.tests.SMTPBackendTests)",
+            "test_email_tls_override_settings (mail.tests.SMTPBackendTests)",
+            "test_email_tls_use_settings (mail.tests.SMTPBackendTests)",
+            "test_empty_admins (mail.tests.SMTPBackendTests)",
+            "test_idn_send (mail.tests.SMTPBackendTests)",
+            "test_lazy_addresses (mail.tests.SMTPBackendTests)",
+            "test_manager_and_admin_mail_prefix (mail.tests.SMTPBackendTests)",
+            "test_message_cc_header (mail.tests.SMTPBackendTests)",
+            "test_plaintext_send_mail (mail.tests.SMTPBackendTests)",
+            "test_recipient_without_domain (mail.tests.SMTPBackendTests)",
+            "test_reopen_connection (mail.tests.SMTPBackendTests)",
+            "test_send (mail.tests.SMTPBackendTests)",
+            "test_send_long_lines (mail.tests.SMTPBackendTests)",
+            "test_send_many (mail.tests.SMTPBackendTests)",
+            "test_send_messages_after_open_failed (mail.tests.SMTPBackendTests)",
+            "test_send_messages_empty_list (mail.tests.SMTPBackendTests)",
+            "A message isn't sent if it doesn't have any recipients.",
+            "test_send_unicode (mail.tests.SMTPBackendTests)",
+            "test_send_verbose_name (mail.tests.SMTPBackendTests)",
+            "test_server_login (mail.tests.SMTPBackendTests)",
+            "test_server_open (mail.tests.SMTPBackendTests)",
+            "test_ssl_tls_mutually_exclusive (mail.tests.SMTPBackendTests)",
+            "test_use_as_contextmanager (mail.tests.SMTPBackendTests)",
+            "test_wrong_admins_managers (mail.tests.SMTPBackendTests)"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "mail.tests"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
