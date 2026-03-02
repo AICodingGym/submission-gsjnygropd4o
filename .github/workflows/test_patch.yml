@@ -1,0 +1,364 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "psf__requests-6028"
+      REPO: "psf/requests"
+      VERSION: "2.27"
+      BASE_COMMIT: "0192aac24123735b3eaf9b08df46429bb770c283"
+      ENV_SETUP_COMMIT: "0192aac24123735b3eaf9b08df46429bb770c283"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'tests/test_utils.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - exceptiongroup=1.2.0=py39h06a4308_0
+            - iniconfig=1.1.1=pyhd3eb1b0_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - packaging=24.1=py39h06a4308_0
+            - pip=24.2=py39h06a4308_0
+            - pluggy=1.0.0=py39h06a4308_1
+            - pytest=7.4.4=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tomli=2.0.1=py39h06a4308_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - certifi==2024.8.30
+                - charset-normalizer==2.0.12
+                - idna==3.10
+                - urllib3==1.26.20
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/test_utils.py b/tests/test_utils.py
+          --- a/tests/test_utils.py
+          +++ b/tests/test_utils.py
+          @@ -602,6 +602,14 @@ def test_parse_header_links(value, expected):
+                   ('example.com/path', 'http://example.com/path'),
+                   ('//example.com/path', 'http://example.com/path'),
+                   ('example.com:80', 'http://example.com:80'),
+          +        (
+          +            'http://user:pass@example.com/path?query',
+          +            'http://user:pass@example.com/path?query'
+          +        ),
+          +        (
+          +            'http://user@example.com/path?query',
+          +            'http://user@example.com/path?query'
+          +        )
+               ))
+           def test_prepend_scheme_if_needed(value, expected):
+               assert prepend_scheme_if_needed(value, 'http') == expected
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "tests/test_utils.py::test_prepend_scheme_if_needed[http://user:pass@example.com/path?query-http://user:pass@example.com/path?query]",
+            "tests/test_utils.py::test_prepend_scheme_if_needed[http://user@example.com/path?query-http://user@example.com/path?query]"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "tests/test_utils.py::TestSuperLen::test_io_streams[StringIO-Test]",
+            "tests/test_utils.py::TestSuperLen::test_io_streams[BytesIO-Test]",
+            "tests/test_utils.py::TestSuperLen::test_super_len_correctly_calculates_len_of_partially_read_file",
+            "tests/test_utils.py::TestSuperLen::test_super_len_handles_files_raising_weird_errors_in_tell[OSError0]",
+            "tests/test_utils.py::TestSuperLen::test_super_len_handles_files_raising_weird_errors_in_tell[OSError1]",
+            "tests/test_utils.py::TestSuperLen::test_super_len_tell_ioerror[OSError0]",
+            "tests/test_utils.py::TestSuperLen::test_super_len_tell_ioerror[OSError1]",
+            "tests/test_utils.py::TestSuperLen::test_string",
+            "tests/test_utils.py::TestSuperLen::test_file[r-1]",
+            "tests/test_utils.py::TestSuperLen::test_file[rb-0]",
+            "tests/test_utils.py::TestSuperLen::test_tarfile_member",
+            "tests/test_utils.py::TestSuperLen::test_super_len_with__len__",
+            "tests/test_utils.py::TestSuperLen::test_super_len_with_no__len__",
+            "tests/test_utils.py::TestSuperLen::test_super_len_with_tell",
+            "tests/test_utils.py::TestSuperLen::test_super_len_with_fileno",
+            "tests/test_utils.py::TestSuperLen::test_super_len_with_no_matches",
+            "tests/test_utils.py::TestToKeyValList::test_valid[value0-expected0]",
+            "tests/test_utils.py::TestToKeyValList::test_valid[value1-expected1]",
+            "tests/test_utils.py::TestToKeyValList::test_valid[value2-expected2]",
+            "tests/test_utils.py::TestToKeyValList::test_valid[None-None]",
+            "tests/test_utils.py::TestToKeyValList::test_invalid",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_valid[None-None]",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_valid[Test-Test]",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_valid[\"Test\"-Test]",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_valid[\"Test\\\\\\\\\"-Test\\\\]",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_valid[\"\\\\\\\\Comp\\\\Res\"-\\\\Comp\\\\Res]",
+            "tests/test_utils.py::TestUnquoteHeaderValue::test_is_filename",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[no_proxy-http://192.168.0.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[no_proxy-http://192.168.0.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[no_proxy-http://172.16.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[no_proxy-http://172.16.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[no_proxy-http://localhost.localdomain:5000/v1.0/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[NO_PROXY-http://192.168.0.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[NO_PROXY-http://192.168.0.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[NO_PROXY-http://172.16.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[NO_PROXY-http://172.16.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass[NO_PROXY-http://localhost.localdomain:5000/v1.0/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[no_proxy-http://192.168.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[no_proxy-http://192.168.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[no_proxy-http://www.requests.com/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[NO_PROXY-http://192.168.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[NO_PROXY-http://192.168.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass[NO_PROXY-http://www.requests.com/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[no_proxy-http://192.168.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[no_proxy-http://192.168.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[no_proxy-http://www.requests.com/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[NO_PROXY-http://192.168.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[NO_PROXY-http://192.168.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_bypass_no_proxy_keyword[NO_PROXY-http://www.requests.com/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[no_proxy-http://192.168.0.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[no_proxy-http://192.168.0.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[no_proxy-http://172.16.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[no_proxy-http://172.16.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[no_proxy-http://localhost.localdomain:5000/v1.0/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[NO_PROXY-http://192.168.0.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[NO_PROXY-http://192.168.0.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[NO_PROXY-http://172.16.1.1/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[NO_PROXY-http://172.16.1.1:5000/]",
+            "tests/test_utils.py::TestGetEnvironProxies::test_not_bypass_no_proxy_keyword[NO_PROXY-http://localhost.localdomain:5000/v1.0/]",
+            "tests/test_utils.py::TestIsIPv4Address::test_valid",
+            "tests/test_utils.py::TestIsIPv4Address::test_invalid[8.8.8.8.8]",
+            "tests/test_utils.py::TestIsIPv4Address::test_invalid[localhost.localdomain]",
+            "tests/test_utils.py::TestIsValidCIDR::test_valid",
+            "tests/test_utils.py::TestIsValidCIDR::test_invalid[8.8.8.8]",
+            "tests/test_utils.py::TestIsValidCIDR::test_invalid[192.168.1.0/a]",
+            "tests/test_utils.py::TestIsValidCIDR::test_invalid[192.168.1.0/128]",
+            "tests/test_utils.py::TestIsValidCIDR::test_invalid[192.168.1.0/-1]",
+            "tests/test_utils.py::TestIsValidCIDR::test_invalid[192.168.1.999/24]",
+            "tests/test_utils.py::TestAddressInNetwork::test_valid",
+            "tests/test_utils.py::TestAddressInNetwork::test_invalid",
+            "tests/test_utils.py::TestGuessFilename::test_guess_filename_invalid[1]",
+            "tests/test_utils.py::TestGuessFilename::test_guess_filename_invalid[value1]",
+            "tests/test_utils.py::TestGuessFilename::test_guess_filename_valid[value-bytes]",
+            "tests/test_utils.py::TestGuessFilename::test_guess_filename_valid[value-str]",
+            "tests/test_utils.py::TestExtractZippedPaths::test_unzipped_paths_unchanged[/]",
+            "tests/test_utils.py::TestExtractZippedPaths::test_unzipped_paths_unchanged[/test_utils.py]",
+            "tests/test_utils.py::TestExtractZippedPaths::test_unzipped_paths_unchanged[/__init__.py]",
+            "tests/test_utils.py::TestExtractZippedPaths::test_unzipped_paths_unchanged[/location]",
+            "tests/test_utils.py::TestExtractZippedPaths::test_zipped_paths_extracted",
+            "tests/test_utils.py::TestExtractZippedPaths::test_invalid_unc_path",
+            "tests/test_utils.py::TestContentEncodingDetection::test_none",
+            "tests/test_utils.py::TestContentEncodingDetection::test_pragmas[<meta",
+            "tests/test_utils.py::TestContentEncodingDetection::test_pragmas[<?xml",
+            "tests/test_utils.py::TestContentEncodingDetection::test_precedence",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-32]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-8-sig]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-16]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-8]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-16-be]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-16-le]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-32-be]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_encoded[utf-32-le]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_bad_utf_like_encoding",
+            "tests/test_utils.py::TestGuessJSONUTF::test_guess_by_bom[utf-16-be-utf-16]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_guess_by_bom[utf-16-le-utf-16]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_guess_by_bom[utf-32-be-utf-32]",
+            "tests/test_utils.py::TestGuessJSONUTF::test_guess_by_bom[utf-32-le-utf-32]",
+            "tests/test_utils.py::test_get_auth_from_url[http://%25%21%2A%27%28%29%3B%3A%40%26%3D%2B%24%2C%2F%3F%23%5B%5D%20:%25%21%2A%27%28%29%3B%3A%40%26%3D%2B%24%2C%2F%3F%23%5B%5D%20@request.com/url.html#test-auth0]",
+            "tests/test_utils.py::test_get_auth_from_url[http://user:pass@complex.url.com/path?query=yes-auth1]",
+            "tests/test_utils.py::test_get_auth_from_url[http://user:pass%20pass@complex.url.com/path?query=yes-auth2]",
+            "tests/test_utils.py::test_get_auth_from_url[http://user:pass",
+            "tests/test_utils.py::test_get_auth_from_url[http://user%25user:pass@complex.url.com/path?query=yes-auth4]",
+            "tests/test_utils.py::test_get_auth_from_url[http://user:pass%23pass@complex.url.com/path?query=yes-auth5]",
+            "tests/test_utils.py::test_get_auth_from_url[http://complex.url.com/path?query=yes-auth6]",
+            "tests/test_utils.py::test_requote_uri_with_unquoted_percents[http://example.com/fiz?buz=%25ppicture-http://example.com/fiz?buz=%25ppicture]",
+            "tests/test_utils.py::test_requote_uri_with_unquoted_percents[http://example.com/fiz?buz=%ppicture-http://example.com/fiz?buz=%25ppicture]",
+            "tests/test_utils.py::test_unquote_unreserved[http://example.com/?a=%---http://example.com/?a=%--]",
+            "tests/test_utils.py::test_unquote_unreserved[http://example.com/?a=%300-http://example.com/?a=00]",
+            "tests/test_utils.py::test_dotted_netmask[8-255.0.0.0]",
+            "tests/test_utils.py::test_dotted_netmask[24-255.255.255.0]",
+            "tests/test_utils.py::test_dotted_netmask[25-255.255.255.128]",
+            "tests/test_utils.py::test_select_proxies[hTTp://u:p@Some.Host/path-http://some.host.proxy-proxies0]",
+            "tests/test_utils.py::test_select_proxies[hTTp://u:p@Other.Host/path-http://http.proxy-proxies1]",
+            "tests/test_utils.py::test_select_proxies[hTTp:///path-http://http.proxy-proxies2]",
+            "tests/test_utils.py::test_select_proxies[hTTps://Other.Host-None-proxies3]",
+            "tests/test_utils.py::test_select_proxies[file:///etc/motd-None-proxies4]",
+            "tests/test_utils.py::test_select_proxies[hTTp://u:p@Some.Host/path-socks5://some.host.proxy-proxies5]",
+            "tests/test_utils.py::test_select_proxies[hTTp://u:p@Other.Host/path-socks5://http.proxy-proxies6]",
+            "tests/test_utils.py::test_select_proxies[hTTp:///path-socks5://http.proxy-proxies7]",
+            "tests/test_utils.py::test_select_proxies[hTTps://Other.Host-socks5://http.proxy-proxies8]",
+            "tests/test_utils.py::test_select_proxies[http://u:p@other.host/path-http://http.proxy-proxies9]",
+            "tests/test_utils.py::test_select_proxies[http://u:p@some.host/path-http://some.host.proxy-proxies10]",
+            "tests/test_utils.py::test_select_proxies[https://u:p@other.host/path-socks5://http.proxy-proxies11]",
+            "tests/test_utils.py::test_select_proxies[https://u:p@some.host/path-socks5://http.proxy-proxies12]",
+            "tests/test_utils.py::test_select_proxies[https://-socks5://http.proxy-proxies13]",
+            "tests/test_utils.py::test_select_proxies[file:///etc/motd-socks5://http.proxy-proxies14]",
+            "tests/test_utils.py::test_parse_dict_header[foo=\"is",
+            "tests/test_utils.py::test_parse_dict_header[key_without_value-expected1]",
+            "tests/test_utils.py::test__parse_content_type_header[application/xml-expected0]",
+            "tests/test_utils.py::test__parse_content_type_header[application/json",
+            "tests/test_utils.py::test__parse_content_type_header[text/plain-expected3]",
+            "tests/test_utils.py::test__parse_content_type_header[multipart/form-data;",
+            "tests/test_utils.py::test_get_encoding_from_headers[value0-None]",
+            "tests/test_utils.py::test_get_encoding_from_headers[value1-utf-8]",
+            "tests/test_utils.py::test_get_encoding_from_headers[value2-ISO-8859-1]",
+            "tests/test_utils.py::test_iter_slices[-0]",
+            "tests/test_utils.py::test_iter_slices[T-1]",
+            "tests/test_utils.py::test_iter_slices[Test-4]",
+            "tests/test_utils.py::test_iter_slices[Cont-0]",
+            "tests/test_utils.py::test_iter_slices[Other--5]",
+            "tests/test_utils.py::test_iter_slices[Content-None]",
+            "tests/test_utils.py::test_parse_header_links[<http:/.../front.jpeg>;",
+            "tests/test_utils.py::test_parse_header_links[<http:/.../front.jpeg>-expected1]",
+            "tests/test_utils.py::test_parse_header_links[<http:/.../front.jpeg>;-expected2]",
+            "tests/test_utils.py::test_parse_header_links[-expected4]",
+            "tests/test_utils.py::test_prepend_scheme_if_needed[example.com/path-http://example.com/path]",
+            "tests/test_utils.py::test_prepend_scheme_if_needed[//example.com/path-http://example.com/path]",
+            "tests/test_utils.py::test_prepend_scheme_if_needed[example.com:80-http://example.com:80]",
+            "tests/test_utils.py::test_to_native_string[T-T0]",
+            "tests/test_utils.py::test_to_native_string[T-T1]",
+            "tests/test_utils.py::test_to_native_string[T-T2]",
+            "tests/test_utils.py::test_urldefragauth[http://u:p@example.com/path?a=1#test-http://example.com/path?a=1]",
+            "tests/test_utils.py::test_urldefragauth[http://example.com/path-http://example.com/path]",
+            "tests/test_utils.py::test_urldefragauth[//u:p@example.com/path-//example.com/path]",
+            "tests/test_utils.py::test_urldefragauth[//example.com/path-//example.com/path]",
+            "tests/test_utils.py::test_urldefragauth[example.com/path-//example.com/path]",
+            "tests/test_utils.py::test_urldefragauth[scheme:u:p@example.com/path-scheme://example.com/path]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://192.168.0.1:5000/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://192.168.0.1/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://172.16.1.1/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://172.16.1.1:5000/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://localhost.localdomain:5000/v1.0/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://google.com:6000/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://172.16.1.12/-False]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://172.16.1.12:5000/-False]",
+            "tests/test_utils.py::test_should_bypass_proxies[http://google.com:5000/v1.0/-False]",
+            "tests/test_utils.py::test_should_bypass_proxies[file:///some/path/on/disk-True]",
+            "tests/test_utils.py::test_add_dict_to_cookiejar[cookiejar0]",
+            "tests/test_utils.py::test_add_dict_to_cookiejar[cookiejar1]",
+            "tests/test_utils.py::test_unicode_is_ascii[test-True]",
+            "tests/test_utils.py::test_unicode_is_ascii[\\xe6\\xed\\xf6\\xfb-False]",
+            "tests/test_utils.py::test_unicode_is_ascii[\\u30b8\\u30a7\\u30fc\\u30d4\\u30fc\\u30cb\\u30c3\\u30af-False]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://192.168.0.1:5000/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://192.168.0.1/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://172.16.1.1/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://172.16.1.1:5000/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://localhost.localdomain:5000/v1.0/-True]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://172.16.1.12/-False]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://172.16.1.12:5000/-False]",
+            "tests/test_utils.py::test_should_bypass_proxies_no_proxy[http://google.com:5000/v1.0/-False]",
+            "tests/test_utils.py::test_set_environ[no_proxy-192.168.0.0/24,127.0.0.1,localhost.localdomain]",
+            "tests/test_utils.py::test_set_environ[no_proxy-None]",
+            "tests/test_utils.py::test_set_environ[a_new_key-192.168.0.0/24,127.0.0.1,localhost.localdomain]",
+            "tests/test_utils.py::test_set_environ[a_new_key-None]",
+            "tests/test_utils.py::test_set_environ_raises_exception"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "tests/test_utils.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
