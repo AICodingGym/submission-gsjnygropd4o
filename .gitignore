@@ -73,3 +73,8 @@ Icon*
 
 .ipynb_checkpoints
 doc/rasm.zarr
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
