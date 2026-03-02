@@ -1,0 +1,346 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-17084"
+      REPO: "django/django"
+      VERSION: "5.0"
+      BASE_COMMIT: "f8c43aca467b7b0c4bb0a7fa41362f90b610b8df"
+      ENV_SETUP_COMMIT: "4a72da71001f154ea60906a2f74898d32b7322a7"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/aggregation/tests.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.11"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - bzip2=1.0.8=h5eee18b_6
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - libuuid=1.41.5=h5eee18b_0
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py311h06a4308_0
+            - python=3.11.10=he870216_0
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py311h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py311h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohappyeyeballs==2.4.3
+                - aiohttp==3.11.7
+                - aiosignal==1.3.1
+                - aiosmtpd==1.4.6
+                - argon2-cffi==23.1.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.8.1
+                - atpublic==5.0
+                - attrs==24.2.0
+                - bcrypt==4.2.1
+                - black==24.10.0
+                - certifi==2024.8.30
+                - cffi==1.17.1
+                - charset-normalizer==3.4.0
+                - click==8.1.7
+                - docutils==0.21.2
+                - frozenlist==1.5.0
+                - geoip2==4.8.1
+                - h11==0.14.0
+                - idna==3.10
+                - jinja2==3.1.4
+                - markupsafe==3.0.2
+                - maxminddb==2.6.2
+                - multidict==6.1.0
+                - mypy-extensions==1.0.0
+                - numpy==2.1.3
+                - outcome==1.3.0.post0
+                - packaging==24.2
+                - pathspec==0.12.1
+                - pillow==11.0.0
+                - platformdirs==4.3.6
+                - propcache==0.2.0
+                - pycparser==2.22
+                - pylibmc==1.6.3
+                - pymemcache==4.0.0
+                - pysocks==1.7.1
+                - pywatchman==2.0.0
+                - pyyaml==6.0.2
+                - redis==5.2.0
+                - requests==2.32.3
+                - selenium==4.26.1
+                - sniffio==1.3.1
+                - sortedcontainers==2.4.0
+                - sqlparse==0.5.2
+                - tblib==3.0.0
+                - trio==0.27.0
+                - trio-websocket==0.11.1
+                - typing-extensions==4.12.2
+                - tzdata==2024.2
+                - urllib3==2.2.3
+                - websocket-client==1.8.0
+                - wsproto==1.2.0
+                - yarl==1.18.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/aggregation/tests.py b/tests/aggregation/tests.py
+          --- a/tests/aggregation/tests.py
+          +++ b/tests/aggregation/tests.py
+          @@ -28,6 +28,7 @@
+               Value,
+               Variance,
+               When,
+          +    Window,
+           )
+           from django.db.models.expressions import Func, RawSQL
+           from django.db.models.functions import (
+          @@ -2207,3 +2208,23 @@ def test_referenced_subquery_requires_wrapping(self):
+                   sql = ctx.captured_queries[0]["sql"].lower()
+                   self.assertEqual(sql.count("select"), 3, "Subquery wrapping required")
+                   self.assertEqual(aggregate, {"sum_total_books": 3})
+          +
+          +    @skipUnlessDBFeature("supports_over_clause")
+          +    def test_referenced_window_requires_wrapping(self):
+          +        total_books_qs = Book.objects.annotate(
+          +            avg_publisher_pages=Coalesce(
+          +                Window(Avg("pages"), partition_by=F("publisher")),
+          +                0.0,
+          +            )
+          +        )
+          +        with self.assertNumQueries(1) as ctx:
+          +            aggregate = total_books_qs.aggregate(
+          +                sum_avg_publisher_pages=Sum("avg_publisher_pages"),
+          +                books_count=Count("id"),
+          +            )
+          +        sql = ctx.captured_queries[0]["sql"].lower()
+          +        self.assertEqual(sql.count("select"), 2, "Subquery wrapping required")
+          +        self.assertEqual(
+          +            aggregate,
+          +            {"sum_avg_publisher_pages": 1100.0, "books_count": 2},
+          +        )
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "test_referenced_window_requires_wrapping (aggregation.tests.AggregateAnnotationPruningTests.test_referenced_window_requires_wrapping)"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "test_non_aggregate_annotation_pruned (aggregation.tests.AggregateAnnotationPruningTests.test_non_aggregate_annotation_pruned)",
+            "test_referenced_aggregate_annotation_kept (aggregation.tests.AggregateAnnotationPruningTests.test_referenced_aggregate_annotation_kept)",
+            "test_referenced_group_by_annotation_kept (aggregation.tests.AggregateAnnotationPruningTests.test_referenced_group_by_annotation_kept)",
+            "test_referenced_subquery_requires_wrapping (aggregation.tests.AggregateAnnotationPruningTests.test_referenced_subquery_requires_wrapping)",
+            "test_unreferenced_aggregate_annotation_pruned (aggregation.tests.AggregateAnnotationPruningTests.test_unreferenced_aggregate_annotation_pruned)",
+            "test_unused_aliased_aggregate_pruned (aggregation.tests.AggregateAnnotationPruningTests.test_unused_aliased_aggregate_pruned)",
+            "test_add_implementation (aggregation.tests.AggregateTestCase.test_add_implementation)",
+            "test_aggregate_alias (aggregation.tests.AggregateTestCase.test_aggregate_alias)",
+            "test_aggregate_annotation (aggregation.tests.AggregateTestCase.test_aggregate_annotation)",
+            "test_aggregate_in_order_by (aggregation.tests.AggregateTestCase.test_aggregate_in_order_by)",
+            "test_aggregate_join_transform (aggregation.tests.AggregateTestCase.test_aggregate_join_transform)",
+            "test_aggregate_multi_join (aggregation.tests.AggregateTestCase.test_aggregate_multi_join)",
+            "test_aggregate_over_aggregate (aggregation.tests.AggregateTestCase.test_aggregate_over_aggregate)",
+            "test_aggregate_over_complex_annotation (aggregation.tests.AggregateTestCase.test_aggregate_over_complex_annotation)",
+            "test_aggregate_transform (aggregation.tests.AggregateTestCase.test_aggregate_transform)",
+            "test_aggregation_default_after_annotation (aggregation.tests.AggregateTestCase.test_aggregation_default_after_annotation)",
+            "test_aggregation_default_compound_expression (aggregation.tests.AggregateTestCase.test_aggregation_default_compound_expression)",
+            "test_aggregation_default_expression (aggregation.tests.AggregateTestCase.test_aggregation_default_expression)",
+            "test_aggregation_default_group_by (aggregation.tests.AggregateTestCase.test_aggregation_default_group_by)",
+            "test_aggregation_default_integer (aggregation.tests.AggregateTestCase.test_aggregation_default_integer)",
+            "test_aggregation_default_not_in_aggregate (aggregation.tests.AggregateTestCase.test_aggregation_default_not_in_aggregate)",
+            "test_aggregation_default_passed_another_aggregate (aggregation.tests.AggregateTestCase.test_aggregation_default_passed_another_aggregate)",
+            "test_aggregation_default_unset (aggregation.tests.AggregateTestCase.test_aggregation_default_unset)",
+            "test_aggregation_default_unsupported_by_count (aggregation.tests.AggregateTestCase.test_aggregation_default_unsupported_by_count)",
+            "test_aggregation_default_using_date_from_database (aggregation.tests.AggregateTestCase.test_aggregation_default_using_date_from_database)",
+            "test_aggregation_default_using_date_from_python (aggregation.tests.AggregateTestCase.test_aggregation_default_using_date_from_python)",
+            "test_aggregation_default_using_datetime_from_database (aggregation.tests.AggregateTestCase.test_aggregation_default_using_datetime_from_database)",
+            "test_aggregation_default_using_datetime_from_python (aggregation.tests.AggregateTestCase.test_aggregation_default_using_datetime_from_python)",
+            "test_aggregation_default_using_decimal_from_database (aggregation.tests.AggregateTestCase.test_aggregation_default_using_decimal_from_database)",
+            "test_aggregation_default_using_decimal_from_python (aggregation.tests.AggregateTestCase.test_aggregation_default_using_decimal_from_python)",
+            "test_aggregation_default_using_duration_from_database (aggregation.tests.AggregateTestCase.test_aggregation_default_using_duration_from_database)",
+            "test_aggregation_default_using_duration_from_python (aggregation.tests.AggregateTestCase.test_aggregation_default_using_duration_from_python)",
+            "test_aggregation_default_using_time_from_database (aggregation.tests.AggregateTestCase.test_aggregation_default_using_time_from_database)",
+            "test_aggregation_default_using_time_from_python (aggregation.tests.AggregateTestCase.test_aggregation_default_using_time_from_python)",
+            "test_aggregation_default_zero (aggregation.tests.AggregateTestCase.test_aggregation_default_zero)",
+            "test_aggregation_exists_annotation (aggregation.tests.AggregateTestCase.test_aggregation_exists_annotation)",
+            "test_aggregation_exists_multivalued_outeref (aggregation.tests.AggregateTestCase.test_aggregation_exists_multivalued_outeref)",
+            "test_aggregation_expressions (aggregation.tests.AggregateTestCase.test_aggregation_expressions)",
+            "test_aggregation_filter_exists (aggregation.tests.AggregateTestCase.test_aggregation_filter_exists)",
+            "test_aggregation_nested_subquery_outerref (aggregation.tests.AggregateTestCase.test_aggregation_nested_subquery_outerref)",
+            "test_aggregation_order_by_not_selected_annotation_values (aggregation.tests.AggregateTestCase.test_aggregation_order_by_not_selected_annotation_values)",
+            "Random() is not included in the GROUP BY when used for ordering.",
+            "Subquery annotations are excluded from the GROUP BY if they are",
+            "test_aggregation_subquery_annotation_exists (aggregation.tests.AggregateTestCase.test_aggregation_subquery_annotation_exists)",
+            "Subquery annotations must be included in the GROUP BY if they use",
+            "test_aggregation_subquery_annotation_related_field (aggregation.tests.AggregateTestCase.test_aggregation_subquery_annotation_related_field)",
+            "Subquery annotations and external aliases are excluded from the GROUP",
+            "test_aggregation_subquery_annotation_values_collision (aggregation.tests.AggregateTestCase.test_aggregation_subquery_annotation_values_collision)",
+            "test_alias_sql_injection (aggregation.tests.AggregateTestCase.test_alias_sql_injection)",
+            "test_annotate_basic (aggregation.tests.AggregateTestCase.test_annotate_basic)",
+            "test_annotate_defer (aggregation.tests.AggregateTestCase.test_annotate_defer)",
+            "test_annotate_defer_select_related (aggregation.tests.AggregateTestCase.test_annotate_defer_select_related)",
+            "test_annotate_m2m (aggregation.tests.AggregateTestCase.test_annotate_m2m)",
+            "test_annotate_ordering (aggregation.tests.AggregateTestCase.test_annotate_ordering)",
+            "test_annotate_over_annotate (aggregation.tests.AggregateTestCase.test_annotate_over_annotate)",
+            "test_annotate_values (aggregation.tests.AggregateTestCase.test_annotate_values)",
+            "test_annotate_values_aggregate (aggregation.tests.AggregateTestCase.test_annotate_values_aggregate)",
+            "test_annotate_values_list (aggregation.tests.AggregateTestCase.test_annotate_values_list)",
+            "test_annotated_aggregate_over_annotated_aggregate (aggregation.tests.AggregateTestCase.test_annotated_aggregate_over_annotated_aggregate)",
+            "test_annotation (aggregation.tests.AggregateTestCase.test_annotation)",
+            "test_annotation_expressions (aggregation.tests.AggregateTestCase.test_annotation_expressions)",
+            "test_arguments_must_be_expressions (aggregation.tests.AggregateTestCase.test_arguments_must_be_expressions)",
+            "test_avg_decimal_field (aggregation.tests.AggregateTestCase.test_avg_decimal_field)",
+            "test_avg_duration_field (aggregation.tests.AggregateTestCase.test_avg_duration_field)",
+            "test_backwards_m2m_annotate (aggregation.tests.AggregateTestCase.test_backwards_m2m_annotate)",
+            "test_coalesced_empty_result_set (aggregation.tests.AggregateTestCase.test_coalesced_empty_result_set)",
+            "test_combine_different_types (aggregation.tests.AggregateTestCase.test_combine_different_types)",
+            "test_complex_aggregations_require_kwarg (aggregation.tests.AggregateTestCase.test_complex_aggregations_require_kwarg)",
+            "test_complex_values_aggregation (aggregation.tests.AggregateTestCase.test_complex_values_aggregation)",
+            "test_count (aggregation.tests.AggregateTestCase.test_count)",
+            "test_count_distinct_expression (aggregation.tests.AggregateTestCase.test_count_distinct_expression)",
+            "test_count_star (aggregation.tests.AggregateTestCase.test_count_star)",
+            ".dates() returns a distinct set of dates when applied to a",
+            "test_decimal_max_digits_has_no_effect (aggregation.tests.AggregateTestCase.test_decimal_max_digits_has_no_effect)",
+            "test_distinct_on_aggregate (aggregation.tests.AggregateTestCase.test_distinct_on_aggregate)",
+            "test_empty_aggregate (aggregation.tests.AggregateTestCase.test_empty_aggregate)",
+            "test_empty_result_optimization (aggregation.tests.AggregateTestCase.test_empty_result_optimization)",
+            "test_even_more_aggregate (aggregation.tests.AggregateTestCase.test_even_more_aggregate)",
+            "test_exists_extra_where_with_aggregate (aggregation.tests.AggregateTestCase.test_exists_extra_where_with_aggregate)",
+            "test_exists_none_with_aggregate (aggregation.tests.AggregateTestCase.test_exists_none_with_aggregate)",
+            "test_expression_on_aggregation (aggregation.tests.AggregateTestCase.test_expression_on_aggregation)",
+            "test_filter_aggregate (aggregation.tests.AggregateTestCase.test_filter_aggregate)",
+            "Filtering against an aggregate requires the usage of the HAVING clause.",
+            "test_filtering (aggregation.tests.AggregateTestCase.test_filtering)",
+            "test_fkey_aggregate (aggregation.tests.AggregateTestCase.test_fkey_aggregate)",
+            "Exists annotations are included in the GROUP BY if they are",
+            "test_group_by_nested_expression_with_params (aggregation.tests.AggregateTestCase.test_group_by_nested_expression_with_params)",
+            "Subquery annotations are included in the GROUP BY if they are",
+            "An annotation included in values() before an aggregate should be",
+            "test_more_aggregation (aggregation.tests.AggregateTestCase.test_more_aggregation)",
+            "test_multi_arg_aggregate (aggregation.tests.AggregateTestCase.test_multi_arg_aggregate)",
+            "test_multiple_aggregate_references (aggregation.tests.AggregateTestCase.test_multiple_aggregate_references)",
+            "test_multiple_aggregates (aggregation.tests.AggregateTestCase.test_multiple_aggregates)",
+            "An annotation not included in values() before an aggregate should be",
+            "test_nonaggregate_aggregation_throws (aggregation.tests.AggregateTestCase.test_nonaggregate_aggregation_throws)",
+            "test_nonfield_annotation (aggregation.tests.AggregateTestCase.test_nonfield_annotation)",
+            "test_order_of_precedence (aggregation.tests.AggregateTestCase.test_order_of_precedence)",
+            "test_related_aggregate (aggregation.tests.AggregateTestCase.test_related_aggregate)",
+            "test_reverse_fkey_annotate (aggregation.tests.AggregateTestCase.test_reverse_fkey_annotate)",
+            "test_single_aggregate (aggregation.tests.AggregateTestCase.test_single_aggregate)",
+            "Sum on a distinct() QuerySet should aggregate only the distinct items.",
+            "test_sum_duration_field (aggregation.tests.AggregateTestCase.test_sum_duration_field)",
+            "Subqueries do not needlessly contain ORDER BY, SELECT FOR UPDATE or",
+            "Aggregation over sliced queryset works correctly.",
+            "Doing exclude() on a foreign model after annotate() doesn't crash.",
+            "test_values_aggregation (aggregation.tests.AggregateTestCase.test_values_aggregation)",
+            "test_values_annotation_with_expression (aggregation.tests.AggregateTestCase.test_values_annotation_with_expression)"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "aggregation.tests"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
