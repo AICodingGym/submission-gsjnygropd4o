@@ -1,0 +1,310 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "pylint-dev__pylint-4551"
+      REPO: "pylint-dev/pylint"
+      VERSION: "2.9"
+      BASE_COMMIT: "99589b08de8c5a2c6cc61e13a37420a868c80599"
+      ENV_SETUP_COMMIT: "c04f92ef68e5ea779a60bfddb91dc677c5470fd0"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'tests/unittest_pyreverse_writer.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - appdirs==1.4.4
+                - astroid==2.6.5
+                - attrs==19.3.0
+                - black==21.7b0
+                - certifi==2024.8.30
+                - cfgv==3.4.0
+                - charset-normalizer==3.4.0
+                - cli-ui==0.10.3
+                - click==8.1.7
+                - colorama==0.4.6
+                - coverage==5.5
+                - coveralls==3.3.1
+                - distlib==0.3.9
+                - docopt==0.6.2
+                - execnet==2.1.1
+                - filelock==3.16.1
+                - flake8==3.9.2
+                - gprof2dot==2024.6.6
+                - identify==2.6.1
+                - idna==3.10
+                - iniconfig==2.0.0
+                - isort==5.9.2
+                - lazy-object-proxy==1.10.0
+                - mccabe==0.6.1
+                - mypy==0.910
+                - mypy-extensions==0.4.4
+                - nodeenv==1.9.1
+                - packaging==24.1
+                - pathspec==0.12.1
+                - platformdirs==4.3.6
+                - pluggy==1.5.0
+                - pre-commit==2.21.0
+                - py==1.11.0
+                - py-cpuinfo==9.0.0
+                - pycodestyle==2.7.0
+                - pyenchant==3.2.2
+                - pyflakes==2.3.1
+                - pytest==6.2.5
+                - pytest-benchmark==3.4.1
+                - pytest-cov==2.12.1
+                - pytest-forked==1.6.0
+                - pytest-profiling==1.7.0
+                - pytest-xdist==2.5.0
+                - pyyaml==6.0.2
+                - regex==2024.9.11
+                - requests==2.32.3
+                - schema==0.7.7
+                - six==1.16.0
+                - tabulate==0.8.10
+                - tbump==6.3.2
+                - toml==0.10.2
+                - tomli==1.2.3
+                - tomlkit==0.13.2
+                - types-pkg-resources==0.1.3
+                - types-toml==0.1.3
+                - typing-extensions==4.12.2
+                - unidecode==1.3.8
+                - urllib3==2.2.3
+                - virtualenv==20.27.0
+                - wrapt==1.12.1
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/unittest_pyreverse_writer.py b/tests/unittest_pyreverse_writer.py
+          --- a/tests/unittest_pyreverse_writer.py
+          +++ b/tests/unittest_pyreverse_writer.py
+          @@ -22,12 +22,14 @@
+           import codecs
+           import os
+           from difflib import unified_diff
+          +from unittest.mock import patch
+           
+          +import astroid
+           import pytest
+           
+           from pylint.pyreverse.diadefslib import DefaultDiadefGenerator, DiadefsHandler
+           from pylint.pyreverse.inspector import Linker, project_from_files
+          -from pylint.pyreverse.utils import get_visibility
+          +from pylint.pyreverse.utils import get_annotation, get_visibility, infer_node
+           from pylint.pyreverse.writer import DotWriter
+           
+           _DEFAULTS = {
+          @@ -132,3 +134,72 @@ def test_get_visibility(names, expected):
+               for name in names:
+                   got = get_visibility(name)
+                   assert got == expected, f"got {got} instead of {expected} for value {name}"
+          +
+          +
+          +@pytest.mark.parametrize(
+          +    "assign, label",
+          +    [
+          +        ("a: str = None", "Optional[str]"),
+          +        ("a: str = 'mystr'", "str"),
+          +        ("a: Optional[str] = 'str'", "Optional[str]"),
+          +        ("a: Optional[str] = None", "Optional[str]"),
+          +    ],
+          +)
+          +def test_get_annotation_annassign(assign, label):
+          +    """AnnAssign"""
+          +    node = astroid.extract_node(assign)
+          +    got = get_annotation(node.value).name
+          +    assert isinstance(node, astroid.AnnAssign)
+          +    assert got == label, f"got {got} instead of {label} for value {node}"
+          +
+          +
+          +@pytest.mark.parametrize(
+          +    "init_method, label",
+          +    [
+          +        ("def __init__(self, x: str):                   self.x = x", "str"),
+          +        ("def __init__(self, x: str = 'str'):           self.x = x", "str"),
+          +        ("def __init__(self, x: str = None):            self.x = x", "Optional[str]"),
+          +        ("def __init__(self, x: Optional[str]):         self.x = x", "Optional[str]"),
+          +        ("def __init__(self, x: Optional[str] = None):  self.x = x", "Optional[str]"),
+          +        ("def __init__(self, x: Optional[str] = 'str'): self.x = x", "Optional[str]"),
+          +    ],
+          +)
+          +def test_get_annotation_assignattr(init_method, label):
+          +    """AssignAttr"""
+          +    assign = rf"""
+          +        class A:
+          +            {init_method}
+          +    """
+          +    node = astroid.extract_node(assign)
+          +    instance_attrs = node.instance_attrs
+          +    for _, assign_attrs in instance_attrs.items():
+          +        for assign_attr in assign_attrs:
+          +            got = get_annotation(assign_attr).name
+          +            assert isinstance(assign_attr, astroid.AssignAttr)
+          +            assert got == label, f"got {got} instead of {label} for value {node}"
+          +
+          +
+          +@patch("pylint.pyreverse.utils.get_annotation")
+          +@patch("astroid.node_classes.NodeNG.infer", side_effect=astroid.InferenceError)
+          +def test_infer_node_1(mock_infer, mock_get_annotation):
+          +    """Return set() when astroid.InferenceError is raised and an annotation has
+          +    not been returned
+          +    """
+          +    mock_get_annotation.return_value = None
+          +    node = astroid.extract_node("a: str = 'mystr'")
+          +    mock_infer.return_value = "x"
+          +    assert infer_node(node) == set()
+          +    assert mock_infer.called
+          +
+          +
+          +@patch("pylint.pyreverse.utils.get_annotation")
+          +@patch("astroid.node_classes.NodeNG.infer")
+          +def test_infer_node_2(mock_infer, mock_get_annotation):
+          +    """Return set(node.infer()) when InferenceError is not raised and an
+          +    annotation has not been returned
+          +    """
+          +    mock_get_annotation.return_value = None
+          +    node = astroid.extract_node("a: str = 'mystr'")
+          +    mock_infer.return_value = "x"
+          +    assert infer_node(node) == set("x")
+          +    assert mock_infer.called
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "tests/unittest_pyreverse_writer.py::test_dot_files[packages_No_Name.dot]",
+            "tests/unittest_pyreverse_writer.py::test_dot_files[classes_No_Name.dot]",
+            "tests/unittest_pyreverse_writer.py::test_get_visibility[names0-special]",
+            "tests/unittest_pyreverse_writer.py::test_get_visibility[names1-private]",
+            "tests/unittest_pyreverse_writer.py::test_get_visibility[names2-public]",
+            "tests/unittest_pyreverse_writer.py::test_get_visibility[names3-protected]",
+            "tests/unittest_pyreverse_writer.py::test_get_annotation_annassign[a:",
+            "tests/unittest_pyreverse_writer.py::test_get_annotation_assignattr[def",
+            "tests/unittest_pyreverse_writer.py::test_infer_node_1",
+            "tests/unittest_pyreverse_writer.py::test_infer_node_2"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          []
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "tests/unittest_pyreverse_writer.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"

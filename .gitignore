@@ -19,3 +19,8 @@ build-stamp
 .eggs/
 .pytest_cache/
 .mypy_cache/
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
