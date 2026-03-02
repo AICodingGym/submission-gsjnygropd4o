@@ -1,0 +1,327 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "django__django-16569"
+      REPO: "django/django"
+      VERSION: "5.0"
+      BASE_COMMIT: "278881e37619278789942513916acafaa88d26f3"
+      ENV_SETUP_COMMIT: "4a72da71001f154ea60906a2f74898d32b7322a7"
+      TEST_CMD: './tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1'
+      TEST_FILES: 'tests/forms_tests/tests/test_formsets.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.11"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - bzip2=1.0.8=h5eee18b_6
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - libuuid=1.41.5=h5eee18b_0
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py311h06a4308_0
+            - python=3.11.10=he870216_0
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py311h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - wheel=0.44.0=py311h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - aiohappyeyeballs==2.4.3
+                - aiohttp==3.10.9
+                - aiosignal==1.3.1
+                - aiosmtpd==1.4.6
+                - argon2-cffi==23.1.0
+                - argon2-cffi-bindings==21.2.0
+                - asgiref==3.8.1
+                - atpublic==5.0
+                - attrs==24.2.0
+                - bcrypt==4.2.0
+                - black==24.10.0
+                - certifi==2024.8.30
+                - cffi==1.17.1
+                - charset-normalizer==3.4.0
+                - click==8.1.7
+                - docutils==0.21.2
+                - frozenlist==1.4.1
+                - geoip2==4.8.0
+                - h11==0.14.0
+                - idna==3.10
+                - jinja2==3.1.4
+                - markupsafe==3.0.1
+                - maxminddb==2.6.2
+                - multidict==6.1.0
+                - mypy-extensions==1.0.0
+                - numpy==2.1.2
+                - outcome==1.3.0.post0
+                - packaging==24.1
+                - pathspec==0.12.1
+                - pillow==10.4.0
+                - platformdirs==4.3.6
+                - propcache==0.2.0
+                - pycparser==2.22
+                - pylibmc==1.6.3
+                - pymemcache==4.0.0
+                - pysocks==1.7.1
+                - pywatchman==2.0.0
+                - pyyaml==6.0.2
+                - redis==5.1.1
+                - requests==2.32.3
+                - selenium==4.25.0
+                - sniffio==1.3.1
+                - sortedcontainers==2.4.0
+                - sqlparse==0.5.1
+                - tblib==3.0.0
+                - trio==0.26.2
+                - trio-websocket==0.11.1
+                - typing-extensions==4.12.2
+                - tzdata==2024.2
+                - urllib3==2.2.3
+                - websocket-client==1.8.0
+                - wsproto==1.2.0
+                - yarl==1.14.0
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/tests/forms_tests/tests/test_formsets.py b/tests/forms_tests/tests/test_formsets.py
+          --- a/tests/forms_tests/tests/test_formsets.py
+          +++ b/tests/forms_tests/tests/test_formsets.py
+          @@ -1480,6 +1480,7 @@ def test_disable_delete_extra_formset_forms(self):
+                   self.assertIn("DELETE", formset.forms[0].fields)
+                   self.assertNotIn("DELETE", formset.forms[1].fields)
+                   self.assertNotIn("DELETE", formset.forms[2].fields)
+          +        self.assertNotIn("DELETE", formset.empty_form.fields)
+           
+                   formset = ChoiceFormFormset(
+                       data={
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "test_disable_delete_extra_formset_forms (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_disable_delete_extra_formset_forms)",
+            "test_disable_delete_extra_formset_forms (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_disable_delete_extra_formset_forms)"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "all_valid() validates all forms, even when some are invalid.",
+            "test_valid (forms_tests.tests.test_formsets.AllValidTests.test_valid)",
+            "is_multipart() works with an empty formset.",
+            "An empty formset still calls clean()",
+            "Media is available on empty formset.",
+            "test_as_div (forms_tests.tests.test_formsets.FormsetAsTagTests.test_as_div)",
+            "test_as_p (forms_tests.tests.test_formsets.FormsetAsTagTests.test_as_p)",
+            "test_as_table (forms_tests.tests.test_formsets.FormsetAsTagTests.test_as_table)",
+            "test_as_ul (forms_tests.tests.test_formsets.FormsetAsTagTests.test_as_ul)",
+            "test_as_div (forms_tests.tests.test_formsets.Jinja2FormsetAsTagTests.test_as_div)",
+            "test_as_p (forms_tests.tests.test_formsets.Jinja2FormsetAsTagTests.test_as_p)",
+            "test_as_table (forms_tests.tests.test_formsets.Jinja2FormsetAsTagTests.test_as_table)",
+            "test_as_ul (forms_tests.tests.test_formsets.Jinja2FormsetAsTagTests.test_as_ul)",
+            "test_customize_management_form_error (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_customize_management_form_error)",
+            "test_empty_forms_are_unbound (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_empty_forms_are_unbound)",
+            "test_form_errors_are_caught_by_formset (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_form_errors_are_caught_by_formset)",
+            "test_management_form_invalid_data (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_management_form_invalid_data)",
+            "test_no_data_error (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_no_data_error)",
+            "test_with_management_data_attrs_work_fine (forms_tests.tests.test_formsets.TestIsBoundBehavior.test_with_management_data_attrs_work_fine)",
+            "test_absolute_max (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_absolute_max)",
+            "test_absolute_max_invalid (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_absolute_max_invalid)",
+            "test_absolute_max_with_max_num (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_absolute_max_with_max_num)",
+            "A FormSet constructor takes the same arguments as Form. Create a",
+            "A form that's displayed as blank may be submitted as blank.",
+            "test_can_delete_extra_formset_forms (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_can_delete_extra_formset_forms)",
+            "FormSets have a clean() hook for doing extra validation that isn't tied",
+            "A custom renderer passed to a formset_factory() is passed to all forms",
+            "test_default_absolute_max (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_default_absolute_max)",
+            "Deleting prefilled data is an error. Removing data from form fields",
+            "More than 1 empty form can be displayed using formset_factory's",
+            "Ordering fields are allowed to be left blank. If they are left blank,",
+            "test_empty_permitted_ignored_empty_form (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_empty_permitted_ignored_empty_form)",
+            "test_form_kwargs_empty_form (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_form_kwargs_empty_form)",
+            "Custom kwargs set on the formset instance are passed to the",
+            "Form kwargs can be passed dynamically in a formset.",
+            "Formsets call is_valid() on each form.",
+            "Formset's forms use the formset's error_class.",
+            "FormSet.has_changed() is True if any data is passed to its forms, even",
+            "A FormSet can be prefilled with existing data by providing a list of",
+            "Formset instances are iterable.",
+            "A formsets without any forms evaluates as True.",
+            "Formset works with SplitDateTimeField(initial=datetime.datetime.now).",
+            "A valid formset should have 0 total errors.",
+            "test_formset_total_error_count_with_non_form_errors (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_total_error_count_with_non_form_errors)",
+            "If validate_max is set and max_num is less than TOTAL_FORMS in the",
+            "test_formset_validate_max_flag_custom_error (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_validate_max_flag_custom_error)",
+            "test_formset_validate_min_excludes_empty_forms (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_validate_min_excludes_empty_forms)",
+            "If validate_min is set and min_num is more than TOTAL_FORMS in the",
+            "test_formset_validate_min_flag_custom_formatted_error (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_validate_min_flag_custom_formatted_error)",
+            "min_num validation doesn't consider unchanged forms with initial data",
+            "test_formset_validation (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_validation)",
+            "A formset's ManagementForm is validated once per FormSet.is_valid()",
+            "formset_factory's can_delete argument adds a boolean \"delete\" field to",
+            "test_formset_with_deletion_custom_widget (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formset_with_deletion_custom_widget)",
+            "deleted_forms works on a valid formset even if a deleted form would",
+            "If a form is filled with something and can_delete is also checked, that",
+            "FormSets with ordering + deletion.",
+            "formset_factory's can_order argument adds an integer field to each",
+            "test_formsets_with_ordering_custom_widget (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_formsets_with_ordering_custom_widget)",
+            "A formset has a hard limit on the number of forms instantiated.",
+            "test_html_safe (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_html_safe)",
+            "Can increase the built-in forms limit via a higher max_num.",
+            "Can get ordered_forms from a valid formset even if a deleted form",
+            "test_limited_max_forms_two (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_limited_max_forms_two)",
+            "max_num has no effect when extra is less than max_num.",
+            "Limiting the maximum number of forms with max_num.",
+            "The management form class has field names matching the constants.",
+            "The management form has the correct prefix.",
+            "test_max_num_with_initial_data (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_max_num_with_initial_data)",
+            "If max_num is 0 then no form is rendered at all, regardless of extra,",
+            "test_max_num_zero_with_initial (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_max_num_zero_with_initial)",
+            "More than 1 empty form can also be displayed using formset_factory's",
+            "More than 1 empty form can be displayed using min_num.",
+            "The extra argument works when the formset is pre-filled with initial",
+            "One form from initial and extra=3 with max_num=2 results in the one",
+            "More initial forms than max_num results in all initial forms being",
+            "test_non_form_errors (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_non_form_errors)",
+            "If non_form_errors() is called without calling is_valid() first,",
+            "Ordering works with blank fieldsets.",
+            "test_repr (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_repr)",
+            "test_repr_do_not_trigger_validation (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_repr_do_not_trigger_validation)",
+            "If at least one field is filled out on a blank form, it will be",
+            "A partially completed form is invalid.",
+            "Just one form may be completed.",
+            "test_template_name_can_be_overridden (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_template_name_can_be_overridden)",
+            "test_template_name_uses_renderer_value (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_template_name_uses_renderer_value)",
+            "test_validate_max_ignores_forms_marked_for_deletion (forms_tests.tests.test_formsets.FormsFormsetTestCase.test_validate_max_ignores_forms_marked_for_deletion)",
+            "test_absolute_max (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_absolute_max)",
+            "test_absolute_max_invalid (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_absolute_max_invalid)",
+            "test_absolute_max_with_max_num (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_absolute_max_with_max_num)",
+            "test_can_delete_extra_formset_forms (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_can_delete_extra_formset_forms)",
+            "test_default_absolute_max (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_default_absolute_max)",
+            "test_empty_permitted_ignored_empty_form (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_empty_permitted_ignored_empty_form)",
+            "test_form_kwargs_empty_form (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_form_kwargs_empty_form)",
+            "test_formset_total_error_count_with_non_form_errors (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_total_error_count_with_non_form_errors)",
+            "test_formset_validate_max_flag_custom_error (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_validate_max_flag_custom_error)",
+            "test_formset_validate_min_excludes_empty_forms (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_validate_min_excludes_empty_forms)",
+            "test_formset_validate_min_flag_custom_formatted_error (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_validate_min_flag_custom_formatted_error)",
+            "test_formset_validation (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_validation)",
+            "test_formset_with_deletion_custom_widget (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formset_with_deletion_custom_widget)",
+            "test_formsets_with_ordering_custom_widget (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_formsets_with_ordering_custom_widget)",
+            "test_html_safe (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_html_safe)",
+            "test_limited_max_forms_two (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_limited_max_forms_two)",
+            "test_max_num_with_initial_data (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_max_num_with_initial_data)",
+            "test_max_num_zero_with_initial (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_max_num_zero_with_initial)",
+            "test_non_form_errors (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_non_form_errors)",
+            "test_repr (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_repr)",
+            "test_repr_do_not_trigger_validation (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_repr_do_not_trigger_validation)",
+            "test_template_name_can_be_overridden (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_template_name_can_be_overridden)",
+            "test_template_name_uses_renderer_value (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_template_name_uses_renderer_value)",
+            "test_validate_max_ignores_forms_marked_for_deletion (forms_tests.tests.test_formsets.Jinja2FormsFormsetTestCase.test_validate_max_ignores_forms_marked_for_deletion)"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "forms_tests.tests.test_formsets"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
