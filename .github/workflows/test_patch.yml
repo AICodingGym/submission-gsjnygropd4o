@@ -1,0 +1,270 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "pytest-dev__pytest-7432"
+      REPO: "pytest-dev/pytest"
+      VERSION: "5.4"
+      BASE_COMMIT: "e6e300e729dd33956e5448d8be9a0b1540b4e53a"
+      ENV_SETUP_COMMIT: "678c1a0745f1cf175c442c719906a1f13e496910"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'testing/test_skipping.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - setuptools=75.1.0=py39h06a4308_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - attrs==23.1.0
+                - iniconfig==2.0.0
+                - more-itertools==10.1.0
+                - packaging==23.1
+                - pluggy==0.13.1
+                - py==1.11.0
+                - toml==0.10.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install py==1.11.0 packaging==23.1 attrs==23.1.0 more-itertools==10.1.0 pluggy==0.13.1
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/testing/test_skipping.py b/testing/test_skipping.py
+          --- a/testing/test_skipping.py
+          +++ b/testing/test_skipping.py
+          @@ -235,6 +235,31 @@ def test_func2():
+                       ["*def test_func():*", "*assert 0*", "*1 failed*1 pass*"]
+                   )
+           
+          +    @pytest.mark.parametrize(
+          +        "test_input,expected",
+          +        [
+          +            (
+          +                ["-rs"],
+          +                ["SKIPPED [1] test_sample.py:2: unconditional skip", "*1 skipped*"],
+          +            ),
+          +            (
+          +                ["-rs", "--runxfail"],
+          +                ["SKIPPED [1] test_sample.py:2: unconditional skip", "*1 skipped*"],
+          +            ),
+          +        ],
+          +    )
+          +    def test_xfail_run_with_skip_mark(self, testdir, test_input, expected):
+          +        testdir.makepyfile(
+          +            test_sample="""
+          +            import pytest
+          +            @pytest.mark.skip
+          +            def test_skip_location() -> None:
+          +                assert 0
+          +        """
+          +        )
+          +        result = testdir.runpytest(*test_input)
+          +        result.stdout.fnmatch_lines(expected)
+          +
+               def test_xfail_evalfalse_but_fails(self, testdir):
+                   item = testdir.getitem(
+                       """
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "testing/test_skipping.py::TestXFail::test_xfail_run_with_skip_mark[test_input1-expected1]"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "testing/test_skipping.py::test_importorskip",
+            "testing/test_skipping.py::TestEvaluation::test_no_marker",
+            "testing/test_skipping.py::TestEvaluation::test_marked_xfail_no_args",
+            "testing/test_skipping.py::TestEvaluation::test_marked_skipif_no_args",
+            "testing/test_skipping.py::TestEvaluation::test_marked_one_arg",
+            "testing/test_skipping.py::TestEvaluation::test_marked_one_arg_with_reason",
+            "testing/test_skipping.py::TestEvaluation::test_marked_one_arg_twice",
+            "testing/test_skipping.py::TestEvaluation::test_marked_one_arg_twice2",
+            "testing/test_skipping.py::TestEvaluation::test_marked_skipif_with_boolean_without_reason",
+            "testing/test_skipping.py::TestEvaluation::test_marked_skipif_with_invalid_boolean",
+            "testing/test_skipping.py::TestEvaluation::test_skipif_class",
+            "testing/test_skipping.py::TestXFail::test_xfail_simple[True]",
+            "testing/test_skipping.py::TestXFail::test_xfail_simple[False]",
+            "testing/test_skipping.py::TestXFail::test_xfail_xpassed",
+            "testing/test_skipping.py::TestXFail::test_xfail_using_platform",
+            "testing/test_skipping.py::TestXFail::test_xfail_xpassed_strict",
+            "testing/test_skipping.py::TestXFail::test_xfail_run_anyway",
+            "testing/test_skipping.py::TestXFail::test_xfail_run_with_skip_mark[test_input0-expected0]",
+            "testing/test_skipping.py::TestXFail::test_xfail_evalfalse_but_fails",
+            "testing/test_skipping.py::TestXFail::test_xfail_not_report_default",
+            "testing/test_skipping.py::TestXFail::test_xfail_not_run_xfail_reporting",
+            "testing/test_skipping.py::TestXFail::test_xfail_not_run_no_setup_run",
+            "testing/test_skipping.py::TestXFail::test_xfail_xpass",
+            "testing/test_skipping.py::TestXFail::test_xfail_imperative",
+            "testing/test_skipping.py::TestXFail::test_xfail_imperative_in_setup_function",
+            "testing/test_skipping.py::TestXFail::test_dynamic_xfail_no_run",
+            "testing/test_skipping.py::TestXFail::test_dynamic_xfail_set_during_funcarg_setup",
+            "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-TypeError-*1",
+            "testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,",
+            "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-IndexError-*1",
+            "testing/test_skipping.py::TestXFail::test_strict_sanity",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail[True]",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail[False]",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail_condition[True]",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail_condition[False]",
+            "testing/test_skipping.py::TestXFail::test_xfail_condition_keyword[True]",
+            "testing/test_skipping.py::TestXFail::test_xfail_condition_keyword[False]",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail_default_from_file[true]",
+            "testing/test_skipping.py::TestXFail::test_strict_xfail_default_from_file[false]",
+            "testing/test_skipping.py::TestXFailwithSetupTeardown::test_failing_setup_issue9",
+            "testing/test_skipping.py::TestXFailwithSetupTeardown::test_failing_teardown_issue9",
+            "testing/test_skipping.py::TestSkip::test_skip_class",
+            "testing/test_skipping.py::TestSkip::test_skips_on_false_string",
+            "testing/test_skipping.py::TestSkip::test_arg_as_reason",
+            "testing/test_skipping.py::TestSkip::test_skip_no_reason",
+            "testing/test_skipping.py::TestSkip::test_skip_with_reason",
+            "testing/test_skipping.py::TestSkip::test_only_skips_marked_test",
+            "testing/test_skipping.py::TestSkip::test_strict_and_skip",
+            "testing/test_skipping.py::TestSkipif::test_skipif_conditional",
+            "testing/test_skipping.py::TestSkipif::test_skipif_reporting[\"hasattr(sys,",
+            "testing/test_skipping.py::TestSkipif::test_skipif_reporting[True,",
+            "testing/test_skipping.py::TestSkipif::test_skipif_using_platform",
+            "testing/test_skipping.py::TestSkipif::test_skipif_reporting_multiple[skipif-SKIP-skipped]",
+            "testing/test_skipping.py::TestSkipif::test_skipif_reporting_multiple[xfail-XPASS-xpassed]",
+            "testing/test_skipping.py::test_skip_not_report_default",
+            "testing/test_skipping.py::test_skipif_class",
+            "testing/test_skipping.py::test_skipped_reasons_functional",
+            "testing/test_skipping.py::test_skipped_folding",
+            "testing/test_skipping.py::test_reportchars",
+            "testing/test_skipping.py::test_reportchars_error",
+            "testing/test_skipping.py::test_reportchars_all",
+            "testing/test_skipping.py::test_reportchars_all_error",
+            "testing/test_skipping.py::test_errors_in_xfail_skip_expressions",
+            "testing/test_skipping.py::test_xfail_skipif_with_globals",
+            "testing/test_skipping.py::test_default_markers",
+            "testing/test_skipping.py::test_xfail_test_setup_exception",
+            "testing/test_skipping.py::test_imperativeskip_on_xfail_test",
+            "testing/test_skipping.py::TestBooleanCondition::test_skipif",
+            "testing/test_skipping.py::TestBooleanCondition::test_skipif_noreason",
+            "testing/test_skipping.py::TestBooleanCondition::test_xfail",
+            "testing/test_skipping.py::test_xfail_item",
+            "testing/test_skipping.py::test_module_level_skip_error",
+            "testing/test_skipping.py::test_module_level_skip_with_allow_module_level",
+            "testing/test_skipping.py::test_invalid_skip_keyword_parameter",
+            "testing/test_skipping.py::test_mark_xfail_item",
+            "testing/test_skipping.py::test_summary_list_after_errors",
+            "testing/test_skipping.py::test_relpath_rootdir"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "testing/test_skipping.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
