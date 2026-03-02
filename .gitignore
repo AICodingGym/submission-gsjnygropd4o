@@ -23,3 +23,8 @@ build-stamp
 .mypy_cache/
 .benchmarks/
 .pylint_primer_tests/
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
