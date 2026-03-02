@@ -76,3 +76,8 @@ _configtest.o.d
 sklearn/utils/seq_dataset.pyx
 sklearn/utils/seq_dataset.pxd
 sklearn/linear_model/sag_fast.pyx
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
