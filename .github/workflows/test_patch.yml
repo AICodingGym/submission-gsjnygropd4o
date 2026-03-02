@@ -1,0 +1,312 @@
+name: SWE-bench Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      INSTANCE_ID: "astropy__astropy-8872"
+      REPO: "astropy/astropy"
+      VERSION: "3.1"
+      BASE_COMMIT: "b750a0e6ee76fb6b8a099a4d16ec51977be46bf6"
+      ENV_SETUP_COMMIT: "2e89d074b3b2abc2da80e437c93b1d5516a0ca57"
+      TEST_CMD: 'pytest -rA'
+      TEST_FILES: 'astropy/units/tests/test_quantity.py'
+      CONDA_ENV: "testbed"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          python-version: "3.9"
+
+      - name: Git Safe Directory
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Create Conda Environment
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          if [ "$ENV_SETUP_COMMIT" != "$BASE_COMMIT" ]; then
+            if ! git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              echo "ENV_SETUP_COMMIT not found locally, fetching from upstream..."
+              git fetch --depth=1 "https://github.com/$REPO.git" "$ENV_SETUP_COMMIT" || true
+            fi
+            if git cat-file -e "$ENV_SETUP_COMMIT^{commit}" 2>/dev/null; then
+              git checkout "$ENV_SETUP_COMMIT"
+            else
+              echo "ENV_SETUP_COMMIT still missing; skipping checkout"
+            fi
+          fi
+          cat <<'ENV_EOF' > /tmp/environment.yml
+          name: testbed
+          channels:
+            - defaults
+            - conda-forge
+          dependencies:
+            - _libgcc_mutex=0.1=main
+            - _openmp_mutex=5.1=1_gnu
+            - ca-certificates=2024.9.24=h06a4308_0
+            - ld_impl_linux-64=2.40=h12ee557_0
+            - libffi=3.4.4=h6a678d5_1
+            - libgcc-ng=11.2.0=h1234567_1
+            - libgomp=11.2.0=h1234567_1
+            - libstdcxx-ng=11.2.0=h1234567_1
+            - ncurses=6.4=h6a678d5_0
+            - openssl=3.0.15=h5eee18b_0
+            - pip=24.2=py39h06a4308_0
+            - python=3.9.20=he870216_1
+            - readline=8.2=h5eee18b_0
+            - sqlite=3.45.3=h5eee18b_0
+            - tk=8.6.14=h39e8969_0
+            - tzdata=2024b=h04d1e81_0
+            - wheel=0.44.0=py39h06a4308_0
+            - xz=5.4.6=h5eee18b_1
+            - zlib=1.2.13=h5eee18b_1
+            - pip:
+                - asttokens==2.4.1
+                - attrs==23.1.0
+                - certifi==2024.8.30
+                - contourpy==1.3.0
+                - coverage==7.6.2
+                - cycler==0.12.1
+                - decorator==5.1.1
+                - exceptiongroup==1.1.3
+                - execnet==2.0.2
+                - executing==2.1.0
+                - fonttools==4.54.1
+                - hypothesis==6.82.6
+                - importlib-resources==6.4.5
+                - iniconfig==2.0.0
+                - ipython==8.18.1
+                - jedi==0.19.1
+                - jinja2==3.1.4
+                - jplephem==2.22
+                - kiwisolver==1.4.7
+                - markupsafe==3.0.2
+                - matplotlib==3.9.2
+                - matplotlib-inline==0.1.7
+                - numpy==1.25.2
+                - objgraph==3.6.2
+                - packaging==23.1
+                - parso==0.8.4
+                - pexpect==4.9.0
+                - pillow==11.0.0
+                - pluggy==1.3.0
+                - prompt-toolkit==3.0.48
+                - psutil==5.9.5
+                - ptyprocess==0.7.0
+                - pure-eval==0.2.3
+                - pyerfa==2.0.0.3
+                - pygments==2.18.0
+                - pyparsing==3.2.0
+                - pytest==7.4.0
+                - pytest-arraydiff==0.5.0
+                - pytest-astropy==0.10.0
+                - pytest-astropy-header==0.2.2
+                - pytest-cov==4.1.0
+                - pytest-doctestplus==1.0.0
+                - pytest-filter-subpackage==0.1.2
+                - pytest-mock==3.11.1
+                - pytest-mpl==0.17.0
+                - pytest-openfiles==0.5.0
+                - pytest-remotedata==0.4.0
+                - pytest-xdist==3.3.1
+                - python-dateutil==2.9.0.post0
+                - pyyaml==6.0.1
+                - setuptools==68.0.0
+                - sgp4==2.23
+                - six==1.16.0
+                - skyfield==1.49
+                - sortedcontainers==2.4.0
+                - stack-data==0.6.3
+                - tomli==2.0.1
+                - traitlets==5.14.3
+                - typing-extensions==4.12.2
+                - wcwidth==0.2.13
+                - zipp==3.20.2
+          ENV_EOF
+          conda env create --file /tmp/environment.yml
+          conda activate "$CONDA_ENV"
+          rm /tmp/environment.yml
+          python -m pip install attrs==23.1.0 exceptiongroup==1.1.3 execnet==2.0.2 hypothesis==6.82.6 iniconfig==2.0.0 numpy==1.25.2 packaging==23.1 pluggy==1.3.0 psutil==5.9.5 pyerfa==2.0.0.3 pytest-arraydiff==0.5.0 pytest-astropy-header==0.2.2 pytest-astropy==0.10.0 pytest-cov==4.1.0 pytest-doctestplus==1.0.0 pytest-filter-subpackage==0.1.2 pytest-mock==3.11.1 pytest-openfiles==0.5.0 pytest-remotedata==0.4.0 pytest-xdist==3.3.1 pytest==7.4.0 PyYAML==6.0.1 setuptools==68.0.0 sortedcontainers==2.4.0 tomli==2.0.1
+
+      - name: Checkout Trigger Commit
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$BASE_COMMIT" || true
+          fi
+          if ! git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 "https://github.com/$REPO.git" "$GITHUB_SHA" || true
+          fi
+          git checkout "$GITHUB_SHA"
+
+      - name: Install Repo
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          git fetch --tags "https://github.com/$REPO.git" || true
+          TARGET_TIMESTAMP=$(git show -s --format=%ci "$BASE_COMMIT")
+          git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 "$tag"); TAG_TIME=$(git show -s --format=%ci "$TAG_COMMIT"); if [[ "$TAG_TIME" > "$TARGET_TIMESTAMP" ]]; then git tag -d "$tag"; fi; done
+          python -m pip install -e .[test] --verbose
+
+      - name: Apply Test Patch
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          git apply --verbose --reject - <<'PATCH_EOF'
+          diff --git a/astropy/units/tests/test_quantity.py b/astropy/units/tests/test_quantity.py
+          --- a/astropy/units/tests/test_quantity.py
+          +++ b/astropy/units/tests/test_quantity.py
+          @@ -138,10 +138,13 @@ def test_preserve_dtype(self):
+                   assert q2.value == float(q1.value)
+                   assert q2.unit == q1.unit
+           
+          -        # but we should preserve float32
+          -        a3 = np.array([1., 2.], dtype=np.float32)
+          -        q3 = u.Quantity(a3, u.yr)
+          -        assert q3.dtype == a3.dtype
+          +        # but we should preserve any float32 or even float16
+          +        a3_32 = np.array([1., 2.], dtype=np.float32)
+          +        q3_32 = u.Quantity(a3_32, u.yr)
+          +        assert q3_32.dtype == a3_32.dtype
+          +        a3_16 = np.array([1., 2.], dtype=np.float16)
+          +        q3_16 = u.Quantity(a3_16, u.yr)
+          +        assert q3_16.dtype == a3_16.dtype
+                   # items stored as objects by numpy should be converted to float
+                   # by default
+                   q4 = u.Quantity(decimal.Decimal('10.25'), u.m)
+          PATCH_EOF
+
+      - name: Run Tests
+        shell: "bash -l {0}"
+        run: |
+          set -euo pipefail
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate "$CONDA_ENV"
+          FAIL_TO_PASS_PATH=/tmp/fail_to_pass.json
+          PASS_TO_PASS_PATH=/tmp/pass_to_pass.json
+          TEST_DIRECTIVES_PATH=/tmp/test_directives.json
+          TEST_RESULTS_PATH=/tmp/test_results.txt
+          cat <<'FAIL_EOF' > "$FAIL_TO_PASS_PATH"
+          [
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_preserve_dtype"
+          ]
+          FAIL_EOF
+          cat <<'PASS_EOF' > "$PASS_TO_PASS_PATH"
+          [
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_1",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_2",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_3",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_nan_inf",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_unit_property",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_copy",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_subok",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_order",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_ndmin",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_non_quantity_with_unit",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_creation_via_view",
+            "astropy/units/tests/test_quantity.py::TestQuantityCreation::test_rshift_warns",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_addition",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_subtraction",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_multiplication",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_division",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_commutativity",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_power",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_matrix_multiplication",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_unary",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_abs",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_incompatible_units",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_non_number_type",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_dimensionless_operations",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_complicated_operation",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_comparison",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_numeric_converters",
+            "astropy/units/tests/test_quantity.py::TestQuantityOperations::test_array_converters",
+            "astropy/units/tests/test_quantity.py::test_quantity_conversion",
+            "astropy/units/tests/test_quantity.py::test_quantity_value_views",
+            "astropy/units/tests/test_quantity.py::test_quantity_conversion_with_equiv",
+            "astropy/units/tests/test_quantity.py::test_quantity_conversion_equivalency_passed_on",
+            "astropy/units/tests/test_quantity.py::test_self_equivalency",
+            "astropy/units/tests/test_quantity.py::test_si",
+            "astropy/units/tests/test_quantity.py::test_cgs",
+            "astropy/units/tests/test_quantity.py::TestQuantityComparison::test_quantity_equality",
+            "astropy/units/tests/test_quantity.py::TestQuantityComparison::test_quantity_equality_array",
+            "astropy/units/tests/test_quantity.py::TestQuantityComparison::test_quantity_comparison",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_dimensionless_quantity_repr",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_dimensionless_quantity_str",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_dimensionless_quantity_format",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_scalar_quantity_str",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_scalar_quantity_repr",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_array_quantity_str",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_array_quantity_repr",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_scalar_quantity_format",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_uninitialized_unit_format",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_to_string",
+            "astropy/units/tests/test_quantity.py::TestQuantityDisplay::test_repr_latex",
+            "astropy/units/tests/test_quantity.py::test_decompose",
+            "astropy/units/tests/test_quantity.py::test_decompose_regression",
+            "astropy/units/tests/test_quantity.py::test_arrays",
+            "astropy/units/tests/test_quantity.py::test_array_indexing_slicing",
+            "astropy/units/tests/test_quantity.py::test_array_setslice",
+            "astropy/units/tests/test_quantity.py::test_inverse_quantity",
+            "astropy/units/tests/test_quantity.py::test_quantity_mutability",
+            "astropy/units/tests/test_quantity.py::test_quantity_initialized_with_quantity",
+            "astropy/units/tests/test_quantity.py::test_quantity_string_unit",
+            "astropy/units/tests/test_quantity.py::test_quantity_invalid_unit_string",
+            "astropy/units/tests/test_quantity.py::test_implicit_conversion",
+            "astropy/units/tests/test_quantity.py::test_implicit_conversion_autocomplete",
+            "astropy/units/tests/test_quantity.py::test_quantity_iterability",
+            "astropy/units/tests/test_quantity.py::test_copy",
+            "astropy/units/tests/test_quantity.py::test_deepcopy",
+            "astropy/units/tests/test_quantity.py::test_equality_numpy_scalar",
+            "astropy/units/tests/test_quantity.py::test_quantity_pickelability",
+            "astropy/units/tests/test_quantity.py::test_quantity_initialisation_from_string",
+            "astropy/units/tests/test_quantity.py::test_unsupported",
+            "astropy/units/tests/test_quantity.py::test_unit_identity",
+            "astropy/units/tests/test_quantity.py::test_quantity_to_view",
+            "astropy/units/tests/test_quantity.py::test_quantity_tuple_power",
+            "astropy/units/tests/test_quantity.py::test_quantity_fraction_power",
+            "astropy/units/tests/test_quantity.py::test_inherit_docstrings",
+            "astropy/units/tests/test_quantity.py::test_repr_array_of_quantity",
+            "astropy/units/tests/test_quantity.py::TestQuantityMatplotlib::test_plot",
+            "astropy/units/tests/test_quantity.py::test_unit_class_override",
+            "astropy/units/tests/test_quantity.py::TestQuantityMimics::test_mimic_input[QuantityMimic]",
+            "astropy/units/tests/test_quantity.py::TestQuantityMimics::test_mimic_input[QuantityMimic2]",
+            "astropy/units/tests/test_quantity.py::TestQuantityMimics::test_mimic_setting[QuantityMimic]",
+            "astropy/units/tests/test_quantity.py::TestQuantityMimics::test_mimic_setting[QuantityMimic2]"
+          ]
+          PASS_EOF
+          cat <<'DIR_EOF' > "$TEST_DIRECTIVES_PATH"
+          [
+            "astropy/units/tests/test_quantity.py"
+          ]
+          DIR_EOF
+          export FAIL_TO_PASS_PATH PASS_TO_PASS_PATH TEST_DIRECTIVES_PATH TEST_RESULTS_PATH
+          set +e
+          python -c 'import textwrap; code = "import json\nimport os\nimport re\nimport shlex\nimport subprocess\nimport sys\n\ndef _load(key):\n    path = os.environ.get(\"{}_PATH\".format(key))\n    if path and os.path.exists(path):\n        with open(path, \"r\", encoding=\"utf-8\") as handle:\n            raw = handle.read()\n    else:\n        raw = os.environ.get(key, \"[]\")\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\ntest_cmd = os.environ[\"TEST_CMD\"]\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\nlog_parts = []\n\ndef log(message):\n    print(message, flush=True)\n    log_parts.append(message + \"\\n\")\n\ndef _as_list(value):\n    if isinstance(value, list):\n        return value\n    if isinstance(value, str):\n        return [value]\n    return []\n\ndef _unique_preserve(values):\n    seen = set()\n    out = []\n    for value in values:\n        if value in seen:\n            continue\n        seen.add(value)\n        out.append(value)\n    return out\n\ndef _parent_test_id(value):\n    if \"[\" in value:\n        return value.split(\"[\", 1)[0].strip()\n    return value.strip()\n\ndef _format_preview(tests, limit=5):\n    shown = [shlex.quote(t) for t in tests[:limit]]\n    if len(tests) > limit:\n        shown.append(\"...\")\n    return \" \".join(shown)\n\ndef _run_cmd(label, tests, chunk_index, chunk_total, attempt):\n    cmd = \" \".join([test_cmd] + [shlex.quote(t) for t in tests])\n    preview = _format_preview(tests)\n    print(\n        \"Running {} chunk {}/{} attempt {} ({} tests): {} {}\".format(\n            label, chunk_index, chunk_total, attempt, len(tests), test_cmd, preview\n        ),\n        flush=True,\n    )\n    result = subprocess.run(\n        cmd,\n        shell=True,\n        stdout=subprocess.PIPE,\n        stderr=subprocess.PIPE,\n        universal_newlines=True,\n    )\n    stdout = result.stdout or \"\"\n    stderr = result.stderr or \"\"\n    if stdout:\n        print(stdout, end=\"\" if stdout.endswith(\"\\n\") else \"\\n\")\n    if stderr:\n        print(stderr, end=\"\" if stderr.endswith(\"\\n\") else \"\\n\", file=sys.stderr)\n    if stdout:\n        log_parts.append(stdout)\n    if stderr:\n        log_parts.append(stderr)\n    return result.returncode == 0, stdout, stderr\n\ndef run_tests(label, tests):\n    tests = _unique_preserve(_as_list(tests))\n    if not tests:\n        print(\"No tests for {}\".format(label))\n        return True\n\n    chunk_size = 25 if label == \"FAIL_TO_PASS\" else 100\n    chunks = [tests[i:i + chunk_size] for i in range(0, len(tests), chunk_size)]\n\n    for chunk_index, chunk in enumerate(chunks, start=1):\n        ok, stdout, stderr = _run_cmd(label, chunk, chunk_index, len(chunks), 1)\n        if ok:\n            continue\n\n        output = \"{}\\n{}\".format(stdout, stderr)\n        if \"ERROR: not found:\" in output:\n            parent_tests = _unique_preserve([_parent_test_id(test) for test in chunk if test])\n            if parent_tests and parent_tests != chunk:\n                log(\n                    \"Retrying {} chunk {}/{} with parent test ids due to missing node IDs\".format(\n                        label, chunk_index, len(chunks)\n                    )\n                )\n                retry_ok, _, _ = _run_cmd(\n                    label,\n                    parent_tests,\n                    chunk_index,\n                    len(chunks),\n                    2,\n                )\n                if retry_ok:\n                    continue\n        return False\n\n    return True\n\ndef _has_unbalanced_brackets(value):\n    depth = 0\n    escaped = False\n    for ch in value:\n        if escaped:\n            escaped = False\n            continue\n        if ch == \"\\\\\":\n            escaped = True\n            continue\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth -= 1\n            if depth < 0:\n                return True\n    return depth != 0\n\ndef _has_space_outside_brackets(value):\n    depth = 0\n    for ch in value:\n        if ch == \"[\":\n            depth += 1\n        elif ch == \"]\":\n            depth = max(depth - 1, 0)\n        elif ch.isspace() and depth == 0:\n            return True\n    return False\n\ndef _looks_like_test_id(value):\n    return any(x in value for x in (\"::\", \"/\", \".py\"))\n\ndef _merge_bracket_fragments(labels):\n    merged = []\n    buffer = None\n    for raw in labels:\n        if not isinstance(raw, str):\n            continue\n        value = raw.strip()\n        if not value:\n            continue\n        if buffer is not None:\n            if _looks_like_test_id(value):\n                log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n                merged.append(buffer)\n                buffer = None\n                # Treat current value as a new candidate.\n            else:\n                buffer = buffer + \" \" + value\n                if not _has_unbalanced_brackets(buffer):\n                    merged.append(buffer)\n                    buffer = None\n                continue\n        if _has_unbalanced_brackets(value):\n            buffer = value\n            continue\n        merged.append(value)\n    if buffer is not None:\n        log(\"Deferring bracket-fragmented test for repair: {}\".format(repr(buffer)))\n        merged.append(buffer)\n    return merged\n\ndef normalize_labels(labels):\n    labels = _as_list(labels)\n    normalized = []\n    for label in labels:\n        if not isinstance(label, str):\n            continue\n        value = label.strip()\n        if not value:\n            continue\n        m = re.match(r\"^([^\\s]+)\\s+\\(([^)]+)\\)$\", value)\n        if m:\n            test_name, path = m.group(1), m.group(2).strip()\n            if path.endswith(\"::\" + test_name) or path.endswith(\".\" + test_name):\n                normalized.append(path)\n            elif re.search(r\"[\\\\/]\", path) or path.endswith(\".py\") or \"::\" in path:\n                normalized.append(\"{}::{}\".format(path, test_name))\n            else:\n                normalized.append(\"{}.{}\".format(path, test_name))\n        else:\n            normalized.append(value)\n    return normalized\n\ndef prefilter_tests(label, tests):\n    tests = _merge_bracket_fragments(_as_list(tests))\n    valid = []\n    skipped = []\n    for test in tests:\n        if not isinstance(test, str):\n            continue\n        value = test.strip()\n        if not value:\n            continue\n        if _has_unbalanced_brackets(value):\n            fallback = value.split(\"[\", 1)[0].strip() if \"[\" in value else \"\"\n            if fallback and not _has_space_outside_brackets(fallback):\n                log(\"Falling back to parent test for {}: {} -> {}\".format(label, repr(value), repr(fallback)))\n                value = fallback\n            else:\n                skipped.append(value)\n                continue\n        if label == \"PASS_TO_PASS\" and \"[\" in value:\n            parent = value.split(\"[\", 1)[0].strip()\n            if parent:\n                value = parent\n        if _has_space_outside_brackets(value):\n            skipped.append(value)\n            continue\n        valid.append(value)\n    if skipped:\n        skipped_str = \", \".join(repr(x) for x in skipped)\n        log(\"Skipping {} non-test entries: {}\".format(label, skipped_str))\n    return _unique_preserve(valid)\n\nfail_to_pass = prefilter_tests(\n    \"FAIL_TO_PASS\",\n    normalize_labels(_load(\"FAIL_TO_PASS\")),\n)\npass_to_pass = prefilter_tests(\n    \"PASS_TO_PASS\",\n    normalize_labels(_load(\"PASS_TO_PASS\")),\n)\ntest_directives = prefilter_tests(\"TEST_DIRECTIVES\", _load(\"TEST_DIRECTIVES\"))\n\nuse_fail_pass = bool(fail_to_pass or pass_to_pass)\n\nexit_code = 0\ntry:\n    if use_fail_pass:\n        if not run_tests(\"FAIL_TO_PASS\", fail_to_pass):\n            exit_code = 1\n        elif not run_tests(\"PASS_TO_PASS\", pass_to_pass):\n            exit_code = 1\n    else:\n        if not run_tests(\"TEST_DIRECTIVES\", test_directives):\n            exit_code = 1\nfinally:\n    try:\n        with open(results_path, \"w\", encoding=\"utf-8\") as handle:\n            handle.write(\"\".join(log_parts))\n    except Exception as exc:\n        print(\"Failed to write test results:\", exc)\nsys.exit(exit_code)"; exec(textwrap.dedent(code))'
+          TEST_EXIT=$?
+          echo "TEST_EXIT=$TEST_EXIT"
+          export TEST_EXIT
+          python -c 'import textwrap; code = "import json\nimport os\nimport sys\nimport urllib.request\n\nurl = os.environ.get(\n    \"WEBHOOK_URL\",\n    \"https://aicodinggym.com/api/webhooks/github\",\n)\ncommit_id = os.environ.get(\"GITHUB_SHA\", \"\")\nbranch_name = os.environ.get(\"GITHUB_REF_NAME\", \"\")\ntest_exit = int(os.environ.get(\"TEST_EXIT\", \"1\"))\nstatus = \"COMPLETED\" if test_exit == 0 else \"FAILED\"\npassed = test_exit == 0\npassed_tests = 1 if passed else 0\ntotal_tests = 1\nfailed_tests = 0 if passed else 1\nresults_path = os.environ.get(\"TEST_RESULTS_PATH\", \"/tmp/test_results.txt\")\ndetails = \"\"\nif os.path.exists(results_path):\n    try:\n        with open(results_path, \"r\", encoding=\"utf-8\") as handle:\n            details = handle.read()\n    except Exception as exc:\n        print(\"Webhook: failed to load test logs:\", exc)\n\nif not url or not commit_id or not branch_name:\n    print(\"Webhook: missing url/commit/branch; skipping.\")\n    sys.exit(0)\npayload = {\n    \"commit_id\": commit_id,\n    \"branch_name\": branch_name,\n    \"status\": status,\n    \"passed\": passed,\n    \"passed_tests\": passed_tests,\n    \"total_tests\": total_tests,\n    \"failed_tests\": failed_tests,\n    \"details\": details,\n}\ndata = json.dumps(payload).encode(\"utf-8\")\nreq = urllib.request.Request(\n    url, data=data,\n    headers={\"Content-Type\": \"application/json\"},\n    method=\"POST\",\n)\ntry:\n    with urllib.request.urlopen(req, timeout=10) as resp:\n        body = resp.read().decode(\"utf-8\")\n        print(\"Webhook response:\", body)\nexcept Exception as exc:\n    print(\"Webhook failed:\", exc)"; exec(textwrap.dedent(code))'
+          exit "$TEST_EXIT"
