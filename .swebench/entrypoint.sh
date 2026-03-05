@@ -1,0 +1,47 @@
+#!/bin/bash
+set -x
+
+# ENV exports from Dockerfiles
+export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
+export UV_HTTP_TIMEOUT=60
+
+cd /app
+
+git reset --hard 79f7d4b1e761a6133a8d844dda14274ac39362e1
+git checkout 79f7d4b1e761a6133a8d844dda14274ac39362e1
+
+# Apply user patch
+git apply -v /workspace/patch.diff || echo 'WARNING: patch apply failed'
+
+# Apply test setup (mirrors before_repo_set_cmd)
+git checkout 59d39dee5a8a66e5b8a18a9085a199d369b1fba8 -- lib/service/cfg_test.go lib/srv/db/access_test.go lib/srv/db/ca_test.go
+
+# Run tests
+bash /workspace/run_script.sh TestAccessMySQL/access_denied_to_specific_user,TestAuthTokens/correct_Postgres_Redshift_IAM_auth_token,TestAccessPostgres/no_access_to_databases,TestAccessPostgres,TestAccessMongoDB/access_allowed_to_specific_user/database,TestInitCACert/shouldn't_download_RDS_CA_when_it's_set,TestProxyClientDisconnectDueToCertExpiration,TestDatabaseServerStart,TestProxyProtocolMySQL,TestAuditPostgres,TestInitCACert/should_download_Redshift_CA_when_it's_not_set,TestAccessPostgres/access_denied_to_specific_user/database,TestAccessMongoDB,TestAuthTokens/incorrect_MySQL_RDS_IAM_auth_token,TestAuditMySQL,TestInitCACert/should_download_RDS_CA_when_it's_not_set,TestAuthTokens/incorrect_Postgres_Cloud_SQL_IAM_auth_token,TestAccessMongoDB/no_access_to_users,TestAccessPostgres/has_access_to_all_database_names_and_users,TestAuthTokens/incorrect_Postgres_Redshift_IAM_auth_token,TestInitCACert,TestProxyClientDisconnectDueToIdleConnection,TestAuthTokens/correct_Postgres_RDS_IAM_auth_token,TestAccessMySQL/has_access_to_nothing,TestAccessMySQL/has_access_to_all_database_users,TestAccessMongoDB/has_access_to_nothing,TestHA,TestAuditMongo,TestAccessPostgres/no_access_to_users,TestAccessPostgres/access_allowed_to_specific_user/database,TestAuthTokens/correct_Postgres_Cloud_SQL_IAM_auth_token,TestProxyProtocolPostgres,TestProxyProtocolMongo,TestAccessMySQL,TestAccessMongoDB/access_denied_to_specific_user/database,TestAuthTokens/incorrect_Postgres_RDS_IAM_auth_token,TestAuthTokens/correct_MySQL_RDS_IAM_auth_token,TestInitCACertCaching,TestAuthTokens,TestInitCACert/should_download_Cloud_SQL_CA_when_it's_not_set,TestInitCACert/shouldn't_download_self-hosted_CA,TestAccessDisabled,TestAccessMongoDB/no_access_to_databases,TestAuthTokens/incorrect_MySQL_Cloud_SQL_IAM_auth_token,TestAccessPostgres/has_access_to_nothing,TestAuthTokens/correct_MySQL_Cloud_SQL_IAM_auth_token,TestAccessMySQL/access_allowed_to_specific_user,TestAccessMongoDB/has_access_to_all_database_names_and_users > /workspace/stdout.log 2> /workspace/stderr.log
+
+# Parse results
+python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
+
+# Print outputs for GHA log
+echo '=== STDOUT ==='
+cat /workspace/stdout.log 2>/dev/null || true
+echo '=== STDERR ==='
+cat /workspace/stderr.log 2>/dev/null || true
+echo '=== PARSED OUTPUT ==='
+cat /workspace/output.json 2>/dev/null || true
+
+# Exit non-zero if any test failed
+python -c "
+import json, sys
+try:
+    with open('/workspace/output.json') as f:
+        data = json.load(f)
+    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
+    if failed:
+        print(f'{len(failed)} test(s) FAILED')
+        sys.exit(1)
+    print('All tests passed')
+except Exception as e:
+    print(f'Could not check results: {e}')
+    sys.exit(1)
+"
