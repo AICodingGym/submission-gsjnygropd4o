@@ -26,3 +26,8 @@ tags
 docker-compose.yml
 !contrib/docker-compose.yml
 test-123.db
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
