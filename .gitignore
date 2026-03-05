@@ -43,3 +43,7 @@ tests/mail/old/binaries/tokens.json
 # https://github.com/microsoft/WSL/issues/7456
 *:Zone.Identifier
 /applications/mail/public/assets/ml-models/*
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
