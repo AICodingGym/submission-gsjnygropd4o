@@ -101,3 +101,8 @@ changelogs/.plugin-cache.yaml
 .ansible-test-timeout.json
 # ansible-test temporary metadata file for use with delgation
 /metadata-*.json
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
