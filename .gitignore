@@ -42,3 +42,8 @@ tests/mail/old/binaries/tokens.json
 # ignore Zone.identifier
 # https://github.com/microsoft/WSL/issues/7456
 *:Zone.Identifier
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
