@@ -31,3 +31,8 @@ build
 .log
 *.code-workspace
 .vscode
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
