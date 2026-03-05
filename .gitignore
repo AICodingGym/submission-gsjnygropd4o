@@ -31,3 +31,8 @@ electron/pub
 /index.html
 # version file and tarball created by `npm pack` / `yarn pack`
 /git-revision.txt
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
