@@ -20,3 +20,8 @@ vuls
 !cmd/vuls
 future-vuls
 trivy-to-vuls
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
