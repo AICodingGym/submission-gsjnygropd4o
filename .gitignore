@@ -13,3 +13,7 @@ android-app/app/release
 app-ios/releases
 native-cache
 test/native-cache
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
