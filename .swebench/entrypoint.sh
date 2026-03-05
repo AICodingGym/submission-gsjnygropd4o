@@ -1,0 +1,48 @@
+#!/bin/bash
+set -x
+
+# ENV exports from Dockerfiles
+export DEBIAN_FRONTEND=noninteractive
+export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
+export UV_HTTP_TIMEOUT=60
+
+cd /app
+
+git reset --hard 8ae1b7f17822e5121f7394d03192e283904579ad
+git checkout 8ae1b7f17822e5121f7394d03192e283904579ad
+
+# Apply user patch
+git apply -v /workspace/patch.diff || echo 'WARNING: patch apply failed'
+
+# Apply test setup (mirrors before_repo_set_cmd)
+git checkout caf10ba9ab2677761c88522d1ba8ad025779c492 -- applications/mail/src/app/helpers/calendar/invite.test.ts packages/shared/test/calendar/alarms.spec.ts packages/shared/test/calendar/decrypt.spec.ts packages/shared/test/calendar/getFrequencyString.spec.js packages/shared/test/calendar/integration/invite.spec.js packages/shared/test/calendar/recurring.spec.js packages/shared/test/calendar/rrule/rrule.spec.js packages/shared/test/calendar/rrule/rruleEqual.spec.js packages/shared/test/calendar/rrule/rruleSubset.spec.js packages/shared/test/calendar/rrule/rruleUntil.spec.js packages/shared/test/calendar/rrule/rruleWkst.spec.js
+
+# Run tests
+bash /workspace/run_script.sh packages/shared/test/calendar/recurring.spec.js,packages/shared/test/calendar/alarms.spec.ts,src/app/helpers/calendar/invite.test.ts,packages/shared/test/calendar/rrule/rruleEqual.spec.js,packages/shared/test/calendar/decrypt.spec.ts,packages/shared/test/calendar/rrule/rruleWkst.spec.js,packages/shared/test/calendar/rrule/rruleUntil.spec.js,packages/shared/test/calendar/rrule/rrule.spec.js,packages/shared/test/calendar/rrule/rruleSubset.spec.js,packages/shared/test/calendar/integration/invite.spec.js,packages/shared/test/calendar/getFrequencyString.spec.js,applications/mail/src/app/helpers/calendar/invite.test.ts > /workspace/stdout.log 2> /workspace/stderr.log
+
+# Parse results
+python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
+
+# Print outputs for GHA log
+echo '=== STDOUT ==='
+cat /workspace/stdout.log 2>/dev/null || true
+echo '=== STDERR ==='
+cat /workspace/stderr.log 2>/dev/null || true
+echo '=== PARSED OUTPUT ==='
+cat /workspace/output.json 2>/dev/null || true
+
+# Exit non-zero if any test failed
+python -c "
+import json, sys
+try:
+    with open('/workspace/output.json') as f:
+        data = json.load(f)
+    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
+    if failed:
+        print(f'{len(failed)} test(s) FAILED')
+        sys.exit(1)
+    print('All tests passed')
+except Exception as e:
+    print(f'Could not check results: {e}')
+    sys.exit(1)
+"
