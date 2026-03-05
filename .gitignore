@@ -25,3 +25,7 @@ tags
 .gitinfo
 docker-compose.yml
 !contrib/docker-compose.yml
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
