@@ -30,3 +30,8 @@ flipt.swagger.json
 
 # generated assets by packr
 *-packr.go
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
