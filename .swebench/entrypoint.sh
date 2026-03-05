@@ -1,0 +1,47 @@
+#!/bin/bash
+set -x
+
+# ENV exports from Dockerfiles
+export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
+export UV_HTTP_TIMEOUT=60
+
+cd /app
+
+git reset --hard 189d41a956ebf5b90b6cf5829d60be46c1df992e
+git checkout 189d41a956ebf5b90b6cf5829d60be46c1df992e
+
+# Apply user patch
+git apply -v /workspace/patch.diff || echo 'WARNING: patch apply failed'
+
+# Apply test setup (mirrors before_repo_set_cmd)
+git checkout 2b15263e49da5625922581569834eec4838a9257 -- lib/ai/chat_test.go lib/ai/model/tokencount_test.go
+
+# Run tests
+bash /workspace/run_script.sh Test_batchReducer_Add/empty,TestChat_PromptTokens/tokenize_our_prompt,TestAsynchronousTokenCounter_TokenCount,TestChat_PromptTokens/empty,TestNodeEmbeddingGeneration,TestKNNRetriever_GetRelevant,Test_batchReducer_Add/many_elements,TestChat_PromptTokens/system_and_user_messages,TestAsynchronousTokenCounter_TokenCount/empty_count,TestAsynchronousTokenCounter_TokenCount/only_completion_start,TestKNNRetriever_Insert,TestChat_Complete,TestChat_Complete/command_completion,Test_batchReducer_Add/propagate_error,TestAsynchronousTokenCounter_Finished,TestAsynchronousTokenCounter_TokenCount/completion_start_and_end,Test_batchReducer_Add/one_element,TestAsynchronousTokenCounter_TokenCount/only_completion_add,TestChat_PromptTokens,TestChat_Complete/text_completion,TestChat_PromptTokens/only_system_message,Test_batchReducer_Add,TestKNNRetriever_Remove,TestSimpleRetriever_GetRelevant,TestMarshallUnmarshallEmbedding > /workspace/stdout.log 2> /workspace/stderr.log
+
+# Parse results
+python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
+
+# Print outputs for GHA log
+echo '=== STDOUT ==='
+cat /workspace/stdout.log 2>/dev/null || true
+echo '=== STDERR ==='
+cat /workspace/stderr.log 2>/dev/null || true
+echo '=== PARSED OUTPUT ==='
+cat /workspace/output.json 2>/dev/null || true
+
+# Exit non-zero if any test failed
+python -c "
+import json, sys
+try:
+    with open('/workspace/output.json') as f:
+        data = json.load(f)
+    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
+    if failed:
+        print(f'{len(failed)} test(s) FAILED')
+        sys.exit(1)
+    print('All tests passed')
+except Exception as e:
+    print(f'Could not check results: {e}')
+    sys.exit(1)
+"
