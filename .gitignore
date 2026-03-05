@@ -54,3 +54,8 @@ devenv.local.nix
 # pre-commit
 .pre-commit-config.yaml
 
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
