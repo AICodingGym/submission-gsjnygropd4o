@@ -27,3 +27,8 @@ package-lock.json
 # These could have files in them but don't currently
 # Cypress will still auto-create them though...
 /cypress/performance
+
+# SWE-bench metadata — local only
+.swe-bench-instance.json
+.swe-bench-gold.patch
+.swe-bench-test.patch
