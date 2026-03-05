@@ -1,0 +1,48 @@
+#!/bin/bash
+set -x
+
+# ENV exports from Dockerfiles
+export DEBIAN_FRONTEND=noninteractive
+export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
+export UV_HTTP_TIMEOUT=60
+
+cd /app
+
+git reset --hard 7264c6bd7f515ae4609be9a5f0c3032ae6fe486a
+git checkout 7264c6bd7f515ae4609be9a5f0c3032ae6fe486a
+
+# Apply user patch
+git apply -v /workspace/patch.diff || echo 'WARNING: patch apply failed'
+
+# Apply test setup (mirrors before_repo_set_cmd)
+git checkout 7b833df125859e5eb98a826e5b83efe0f93a347b -- applications/drive/src/app/store/links/useLinksListing.test.tsx
+
+# Run tests
+bash /workspace/run_script.sh src/app/store/links/useLinksListing.test.ts,applications/drive/src/app/store/links/useLinksListing.test.tsx > /workspace/stdout.log 2> /workspace/stderr.log
+
+# Parse results
+python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
+
+# Print outputs for GHA log
+echo '=== STDOUT ==='
+cat /workspace/stdout.log 2>/dev/null || true
+echo '=== STDERR ==='
+cat /workspace/stderr.log 2>/dev/null || true
+echo '=== PARSED OUTPUT ==='
+cat /workspace/output.json 2>/dev/null || true
+
+# Exit non-zero if any test failed
+python -c "
+import json, sys
+try:
+    with open('/workspace/output.json') as f:
+        data = json.load(f)
+    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
+    if failed:
+        print(f'{len(failed)} test(s) FAILED')
+        sys.exit(1)
+    print('All tests passed')
+except Exception as e:
+    print(f'Could not check results: {e}')
+    sys.exit(1)
+"
