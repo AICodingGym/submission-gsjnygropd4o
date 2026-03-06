@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
+FROM python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -17,7 +17,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
-    python-is-python3 \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
@@ -40,7 +39,7 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation2 \
     libxcb1 \
     libxkbcommon-x11-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
