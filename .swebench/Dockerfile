@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
@@ -17,7 +18,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
-    python-is-python3 \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation2 \
     libxcb1 \
     libxkbcommon-x11-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
