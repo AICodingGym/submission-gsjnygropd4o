@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
+FROM python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -17,11 +18,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     python3-dev \
-    python-is-python3 \
     build-essential \
     pkg-config \
-    libgl1-mesa-glx \
-    libegl1-mesa \
+    libgl1 \
+    libegl1 \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
