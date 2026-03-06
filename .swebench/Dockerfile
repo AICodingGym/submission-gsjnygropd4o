@@ -4,6 +4,8 @@
 ###############################################
 # TODO: Choose appropriate base image
 FROM golang:1.24
+ENV CGO_CFLAGS_ALLOW=".*"
+ENV CGO_LDFLAGS_ALLOW=".*"
 
 ###############################################
 # WORKING DIRECTORY
