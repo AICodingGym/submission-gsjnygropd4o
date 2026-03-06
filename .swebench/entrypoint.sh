@@ -2,6 +2,7 @@
 set -x
 
 # ENV exports from Dockerfiles
+export PIP_BREAK_SYSTEM_PACKAGES=1
 export SETUP='{ "url": "http://127.0.0.1:4567/forum", "secret": "abcdef", "admin:username": "admin", "admin:email": "test@example.org", "admin:password": "hAN3Eg8W", "admin:password:confirm": "hAN3Eg8W", "database": "redis", "redis:host": "127.0.0.1", "redis:port": 6379, "redis:password": "", "redis:database": 0 }'
 export CI='{ "host": "127.0.0.1", "database": 1, "port": 6379 }'
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
@@ -32,15 +33,19 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
+# Exit non-zero if any test failed or errored
 python -c "
 import json, sys
 try:
     with open('/workspace/output.json') as f:
         data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
+    tests = data.get('tests', [])
+    failed = [t for t in tests if t.get('status') in ('FAILED', 'ERROR')]
     if failed:
-        print(f'{len(failed)} test(s) FAILED')
+        print(f'{len(failed)} test(s) FAILED/ERROR')
+        sys.exit(1)
+    if not tests:
+        print('No tests found')
         sys.exit(1)
     print('All tests passed')
 except Exception as e:
