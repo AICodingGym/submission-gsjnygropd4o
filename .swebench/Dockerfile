@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
+FROM python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -111,4 +112,4 @@ echo "================= 0909 BUILD END 0909 ================="
 
 EOFBUILD
 RUN chmod +x /build.sh
-RUN /build.sh
+RUN pip install "setuptools<71" && /build.sh

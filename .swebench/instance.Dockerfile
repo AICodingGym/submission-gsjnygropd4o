@@ -71,4 +71,4 @@ echo "================= 0909 BUILD END 0909 ================="
 
 EOFBUILD
 RUN chmod +x /build.sh
-RUN /build.sh
+RUN pip install "setuptools<71" && /build.sh
