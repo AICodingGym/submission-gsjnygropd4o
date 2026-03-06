@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
@@ -14,6 +15,8 @@ WORKDIR /app
 
 ###############################################
 # SYSTEM DEPENDENCIES
+###############################################
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ###############################################
 # TODO: Install required system dependencies
 # TODO: Setup basic python environment which is needed for final post-processing and scoring

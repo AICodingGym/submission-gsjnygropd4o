@@ -15,6 +15,8 @@ WORKDIR /app
 ###############################################
 # SYSTEM DEPENDENCIES
 ###############################################
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+###############################################
 # TODO: Install required system dependencies
 # TODO: Setup basic python environment which is needed for final post-processing and scoring
 # RUN apt-get update && apt-get install -y git <other-required-packages>
