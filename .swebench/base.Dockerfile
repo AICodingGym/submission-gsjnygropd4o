@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation2 \
     libxcb1 \
     libxkbcommon-x11-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 
