@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
@@ -13,6 +14,8 @@ WORKDIR /app
 
 ###############################################
 # SYSTEM DEPENDENCIES
+###############################################
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ###############################################
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
