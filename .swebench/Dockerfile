@@ -3,6 +3,7 @@
 # BASE IMAGE
 ###############################################
 FROM node:14-buster
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 ###############################################
 # WORKING DIRECTORY
