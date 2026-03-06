@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.10-slim-bookworm
+FROM python:3.10-slim-bookworm
 
 ###############################################
 # WORKING DIRECTORY
