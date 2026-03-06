@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
+FROM python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -16,8 +17,7 @@ RUN apt-get update && apt-get install -y \
     git \
     bash \
     python3 \
-    python-is-python3 \
-    libegl1-mesa \
+    libegl1 \
     libxkbcommon-x11-0 \
     libxcb-icccm4 \
     libxcb-image0 \
@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y \
     dbus-x11 \
     build-essential \
     libglib2.0-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     libfontconfig1 \
     libxrender1 \
     libdbus-1-3 \
