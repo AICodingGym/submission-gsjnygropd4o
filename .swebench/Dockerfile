@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/ubuntu:20.04
+FROM ubuntu:20.04
 
 ###############################################
 # WORKING DIRECTORY
@@ -24,7 +25,6 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     python3-venv \
-    python-is-python3 \
     # Qt5 and GUI dependencies - avoid system PyQt5 to prevent conflicts
     qt5-default \
     qtbase5-dev \
@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
     dbus-x11 \
     # Additional system dependencies from CI
     libyaml-dev \
-    libegl1-mesa \
+    libegl1 \
     libxkbcommon-x11-0 \
     libxcb-icccm4 \
     libxcb-image0 \
