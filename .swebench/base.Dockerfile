@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y \
     git \
     bash \
     python3 \
-    python-is-python3 \
     build-essential \
     libglib2.0-0 \
     libgl1 \
@@ -42,10 +41,10 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation2 \
     libxcb1 \
     libxkbcommon-x11-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     dbus-x11 \
     python3-dev \
-    libegl1-mesa \
+    libegl1 \
     libxcb-icccm4 \
     libxcb-image0 \
     libxcb-keysyms1 \
