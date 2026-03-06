@@ -3,6 +3,7 @@
 # BASE IMAGE
 ###############################################
 FROM ubuntu:20.04
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 ###############################################
 # WORKING DIRECTORY
