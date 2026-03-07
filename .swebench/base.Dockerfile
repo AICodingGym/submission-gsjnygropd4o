@@ -41,6 +41,9 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-0 \
     libgl1 \
     dbus-x11 \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ###############################################
