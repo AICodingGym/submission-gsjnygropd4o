@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/ubuntu:20.04
+FROM ubuntu:20.04
 
 ###############################################
 # WORKING DIRECTORY
