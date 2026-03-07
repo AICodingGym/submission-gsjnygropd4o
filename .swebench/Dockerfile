@@ -18,6 +18,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
+    python-is-python3 \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
@@ -42,6 +43,9 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-0 \
     libgl1 \
     dbus-x11 \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ###############################################
@@ -91,6 +95,7 @@ pip install pypi-timemachine
 pypi-timemachine 2023-10-14 --port 9876 &
 pip config set global.index-url http://127.0.0.1:9876/
 sleep 3
+pip install "setuptools<69" || true
 pip install pytest-rerunfailures
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 
