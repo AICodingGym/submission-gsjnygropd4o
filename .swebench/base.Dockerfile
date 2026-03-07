@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 ###############################################
 # BASE IMAGE
 ###############################################
@@ -16,6 +15,11 @@ WORKDIR /app
 # SYSTEM DEPENDENCIES
 ###############################################
 # Install required system dependencies
+# Fix Debian Buster EOL - point to archive
+RUN sed -i 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.debian.org|http://archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i '/buster-updates/d' /etc/apt/sources.list
+
 RUN apt-get update && apt-get install -y \
     git \
     python3 \
