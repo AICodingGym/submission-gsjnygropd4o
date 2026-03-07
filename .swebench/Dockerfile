@@ -96,9 +96,10 @@ cd /app
 set -e
 
 python -m pip install --default-timeout=100 -r requirements.txt
-python -m pip install -r requirements_test.txt
+python -m pip install "setuptools<67" || true
+pip install -r requirements_test.txt
 
-npm ci --no-audit
+npm install --no-audit
 
 ln -sf vendor/infogami/infogami infogami
 
