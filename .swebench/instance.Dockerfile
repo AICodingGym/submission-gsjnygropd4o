@@ -28,11 +28,11 @@ RUN /preprocess.sh
 RUN cat <<'EOFBUILD' > /build.sh
 #!/bin/sh
 pip install setuptools || true
+pip install pytest-rerunfailures || true
 pip install pypi-timemachine
 pypi-timemachine 2025-01-12 --port 9876 &
 pip config set global.index-url http://127.0.0.1:9876/
 sleep 3
-pip install pytest-rerunfailures
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 
 # Common Setup, DO NOT MODIFY
