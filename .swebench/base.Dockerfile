@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM python:3.12.2-slim-bookworm
+FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.12.2-slim-bookworm
 
 ###############################################
 # WORKING DIRECTORY
@@ -15,7 +15,7 @@ WORKDIR /app
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=POSIX
 
-RUN apt-get -qq update && apt-get install -y \
+RUN apt-get -qq update && apt-get install -y wget gnupg \
     git \
     postgresql-client \
     build-essential \
