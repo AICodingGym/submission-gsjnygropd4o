@@ -17,6 +17,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
+    python-is-python3 \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
@@ -41,6 +42,9 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-0 \
     libgl1 \
     dbus-x11 \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ###############################################
