@@ -99,6 +99,7 @@ RUN /preprocess.sh
 RUN cat <<'EOFBUILD' > /build.sh
 #!/bin/sh
 pip config set global.break-system-packages true 2>/dev/null || true
+pip config set global.break-system-packages true 2>/dev/null || true
 pip install setuptools || true
 pip install --ignore-installed pypi-timemachine
 pypi-timemachine 2024-10-22 --port 9876 &
