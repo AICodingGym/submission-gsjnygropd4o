@@ -3,7 +3,6 @@
 # BASE IMAGE
 ###############################################
 FROM node:22-bullseye
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 ###############################################
 # WORKING DIRECTORY
@@ -181,3 +180,5 @@ echo "================= 0909 BUILD START 0909 ================="
 echo "================= 0909 BUILD END 0909 ================="
 
 EOFBUILD
+RUN chmod +x /build.sh
+RUN /build.sh
