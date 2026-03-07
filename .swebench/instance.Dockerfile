@@ -39,6 +39,7 @@ cd /app
 set -e
 
 pip install --upgrade pip setuptools wheel
+pip install "setuptools<67" || true
 pip install -r requirements_test.txt
 
 pip install selenium webdriver-manager splinter
