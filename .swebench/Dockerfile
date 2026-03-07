@@ -16,7 +16,7 @@ WORKDIR /app
 # SYSTEM DEPENDENCIES
 ###############################################
 # Install required system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y wget gnupg \
     git \
     build-essential \
     libpq-dev \
