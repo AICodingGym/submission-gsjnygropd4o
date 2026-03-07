@@ -88,6 +88,7 @@ export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 cd /app
 set -e
 
+pip install "setuptools<67" || true
 pip install -r requirements_test.txt
 
 npm install --no-audit
