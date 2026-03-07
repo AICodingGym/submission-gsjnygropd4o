@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     dbus-x11 \
     python3-dev \
-    libegl1-mesa \
+    libegl1 \
     libxcb-icccm4 \
     libxcb-image0 \
     libxcb-keysyms1 \
