@@ -117,6 +117,7 @@ cd /app
 set -e
 
 pip install -r requirements.txt
+pip install "setuptools<67" || true
 pip install -r requirements_test.txt
 
 pip install selenium splinter pytest pytest-xdist
