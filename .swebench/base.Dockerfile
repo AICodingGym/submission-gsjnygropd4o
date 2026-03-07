@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM python:3.11-slim
+FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -42,6 +42,10 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     dbus-x11 \
     python3-dev \
+    python-is-python3 \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ###############################################
