@@ -1,7 +1,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM ubuntu:20.04
+FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/ubuntu:20.04
 
 ###############################################
 # WORKING DIRECTORY
@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     python3-venv \
+    python-is-python3 \
     # Qt5 and GUI dependencies - avoid system PyQt5 to prevent conflicts
     qt5-default \
     qtbase5-dev \
@@ -48,6 +49,9 @@ RUN apt-get update && apt-get install -y \
     ttf-bitstream-vera \
     # Build tools
     gcc \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up display environment for headless testing
