@@ -2,7 +2,7 @@
 ###############################################
 # BASE IMAGE
 ###############################################
-FROM python:3.11-slim
+FROM 084828598639.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/python:3.11-slim
 
 ###############################################
 # WORKING DIRECTORY
@@ -18,6 +18,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
+    python-is-python3 \
     libglib2.0-0 \
     libgl1 \
     libegl1 \
@@ -108,6 +109,7 @@ pip install pypi-timemachine
 pypi-timemachine 2025-08-26 --port 9876 &
 pip config set global.index-url http://127.0.0.1:9876/
 sleep 3
+pip install "setuptools<69" || true
 pip install pytest-rerunfailures
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 
