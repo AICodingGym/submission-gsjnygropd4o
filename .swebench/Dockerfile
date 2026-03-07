@@ -4,8 +4,6 @@
 ###############################################
 # TODO: Choose appropriate base image
 FROM golang:1.24
-ENV CGO_CFLAGS_ALLOW=".*"
-ENV CGO_LDFLAGS_ALLOW=".*"
 
 ###############################################
 # WORKING DIRECTORY
@@ -17,8 +15,6 @@ WORKDIR /app
 
 ###############################################
 # SYSTEM DEPENDENCIES
-###############################################
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ###############################################
 # TODO: Install required system dependencies
 # TODO: Setup basic python environment which is needed for final post-processing and scoring
@@ -103,11 +99,11 @@ RUN /preprocess.sh
 RUN cat <<'EOFBUILD' > /build.sh
 #!/bin/sh
 pip install setuptools || true
+pip install pytest-rerunfailures || true
 pip install pypi-timemachine
 pypi-timemachine 2024-10-22 --port 9876 &
 pip config set global.index-url http://127.0.0.1:9876/
 sleep 3
-pip install pytest-rerunfailures
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 
 # Common Setup, DO NOT MODIFY
