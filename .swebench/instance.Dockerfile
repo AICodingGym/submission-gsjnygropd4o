@@ -135,4 +135,6 @@ echo "================= 0909 BUILD START 0909 ================="
 # npm run build
 echo "================= 0909 BUILD END 0909 ================="
 
-EOF
+EOFBUILD
+RUN chmod +x /build.sh
+RUN /build.sh
