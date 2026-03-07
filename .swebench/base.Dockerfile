@@ -37,7 +37,7 @@ RUN apt-get -qq update && apt-get install -y wget gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install LTS version of node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
 
 ###############################################

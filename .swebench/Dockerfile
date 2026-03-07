@@ -38,7 +38,7 @@ RUN apt-get -qq update && apt-get install -y wget gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install LTS version of node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
 
 ###############################################
@@ -98,10 +98,9 @@ git submodule init
 git submodule sync
 git submodule update
 
-python -m pip install --upgrade pip wheel
+python -m pip install --upgrade pip "setuptools<67" wheel
 python -m pip install --default-timeout=100 -r requirements.txt
-python -m pip install "setuptools<67" || true
-pip install -r requirements_test.txt
+python -m pip install -r requirements_test.txt
 
 npm install --no-audit
 
