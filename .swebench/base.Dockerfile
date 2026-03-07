@@ -2,7 +2,7 @@
 # BASE IMAGE
 ###############################################
 # TODO: Choose appropriate base image
-FROM golang:1.24
+FROM golang:1.23
 
 ###############################################
 # WORKING DIRECTORY
