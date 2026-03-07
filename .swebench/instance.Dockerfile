@@ -27,6 +27,7 @@ RUN /preprocess.sh
 
 RUN cat <<'EOFBUILD' > /build.sh
 #!/bin/sh
+pip config set global.break-system-packages true 2>/dev/null || true
 pip install setuptools || true
 pip install pytest-rerunfailures || true
 pip install pypi-timemachine
