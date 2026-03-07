@@ -42,6 +42,10 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     dbus-x11 \
     python3 \
+    python-is-python3 \
+    libfontconfig1 \
+    libxkbcommon0 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ###############################################
