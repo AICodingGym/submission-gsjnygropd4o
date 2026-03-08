@@ -16,6 +16,7 @@ WORKDIR /app
 # SYSTEM DEPENDENCIES
 ###############################################
 # Install required system dependencies
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 RUN apt-get update && apt-get install -y wget gnupg \
     git \
     build-essential \
