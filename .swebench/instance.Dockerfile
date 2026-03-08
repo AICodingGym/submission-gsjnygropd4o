@@ -38,7 +38,7 @@ export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 cd /app
 set -e
 
-python -m pip install --upgrade pip wheel
+python -m pip install --upgrade pip "setuptools<67" wheel
 
 python -m pip install Cython
 

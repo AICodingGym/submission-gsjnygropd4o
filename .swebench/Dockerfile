@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 16 (compatible with 2022 dependencies)
-RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
 
 # Install Chrome for integration tests
@@ -115,7 +115,7 @@ export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 cd /app
 set -e
 
-python -m pip install --upgrade pip wheel
+python -m pip install --upgrade pip "setuptools<67" wheel
 
 python -m pip install Cython
 
