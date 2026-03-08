@@ -38,10 +38,9 @@ export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 cd /app
 set -e
 
-python -m pip install --upgrade pip wheel
+python -m pip install --upgrade pip "setuptools<67" wheel
 python -m pip install --default-timeout=100 -r requirements.txt
-python -m pip install "setuptools<67" || true
-pip install -r requirements_test.txt
+python -m pip install -r requirements_test.txt
 
 python -m pip install selenium splinter
 
