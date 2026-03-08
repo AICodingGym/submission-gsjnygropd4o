@@ -95,8 +95,7 @@ export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 cd /app
 set -e
 
-pip install --upgrade pip setuptools wheel
-pip install "setuptools<67" || true
+pip install --upgrade pip "setuptools<67" wheel
 pip install -r requirements_test.txt
 
 pip install selenium webdriver-manager splinter
