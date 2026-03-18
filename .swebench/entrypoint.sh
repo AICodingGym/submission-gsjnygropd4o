@@ -18,6 +18,7 @@ git checkout e50808c03e4b9d25a6a78af9c61a3b1616ea356b -- internal/config/config_
 
 # Run tests
 bash /workspace/run_script.sh TestAuditUnaryInterceptor_CreateFlag,TestCacheUnaryInterceptor_UpdateVariant,TestValidationUnaryInterceptor,TestTracingExporter,TestAuditUnaryInterceptor_DeleteConstraint,TestJSONSchema,TestAuditUnaryInterceptor_UpdateConstraint,TestAuditUnaryInterceptor_UpdateRule,TestAuditUnaryInterceptor_UpdateNamespace,TestAuditUnaryInterceptor_CreateNamespace,TestAuditUnaryInterceptor_DeleteVariant,TestAuditUnaryInterceptor_UpdateSegment,TestCacheUnaryInterceptor_GetFlag,TestAuditUnaryInterceptor_CreateVariant,TestAuditUnaryInterceptor_CreateConstraint,TestErrorUnaryInterceptor,TestSinkSpanExporter,TestServeHTTP,Test_mustBindEnv,TestEvaluationUnaryInterceptor_BatchEvaluation,TestScheme,TestAuditUnaryInterceptor_DeleteFlag,TestAuditUnaryInterceptor_DeleteNamespace,TestLoad,TestCacheUnaryInterceptor_DeleteFlag,TestAuditUnaryInterceptor_DeleteDistribution,TestAuditUnaryInterceptor_CreateSegment,TestEvaluationUnaryInterceptor_Noop,TestAuditUnaryInterceptor_DeleteRule,TestCacheUnaryInterceptor_DeleteVariant,TestAuditUnaryInterceptor_DeleteSegment,TestEvaluationUnaryInterceptor_Evaluation,TestAuditUnaryInterceptor_CreateRule,TestAuditUnaryInterceptor_UpdateDistribution,TestLogEncoding,TestAuditUnaryInterceptor_CreateDistribution,TestCacheBackend,TestCacheUnaryInterceptor_UpdateFlag,TestCacheUnaryInterceptor_Evaluate,TestAuditUnaryInterceptor_UpdateVariant,TestDatabaseProtocol,TestCacheUnaryInterceptor_CreateVariant,TestAuditUnaryInterceptor_UpdateFlag > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
