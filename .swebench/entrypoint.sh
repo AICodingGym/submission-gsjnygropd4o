@@ -18,6 +18,7 @@ git checkout c11ba27509f733d7d280bdf661cbbe2e7a99df4c -- models/library_test.go
 
 # Run tests
 bash /workspace/run_script.sh TestFormatMaxCvssScore,TestSummaries,TestExcept,TestFilterIgnorePkgsContainer,TestLibraryScanners_Find/miss,TestCvss3Scores,TestDistroAdvisories_AppendIfMissing/duplicate_no_append,TestStorePackageStatueses,TestVulnInfo_AttackVector/3.1:N,TestPackage_FormatVersionFromTo/nfy2,TestToSortedSlice,TestCvss2Scores,TestFilterByCvssOver,TestVulnInfo_AttackVector/2.0:L,TestPackage_FormatVersionFromTo,TestMerge,TestDistroAdvisories_AppendIfMissing/append,TestVendorLink,TestPackage_FormatVersionFromTo/nfy3,TestTitles,TestPackage_FormatVersionFromTo/nfy,TestCountGroupBySeverity,TestPackage_FormatVersionFromTo/fixed,TestVulnInfo_AttackVector/3.0:N,TestLibraryScanners_Find,TestVulnInfo_AttackVector,TestSortPackageStatues,TestPackage_FormatVersionFromTo/nfy#01,TestFilterIgnoreCveIDsContainer,TestFilterIgnoreCveIDs,TestVulnInfo_AttackVector/2.0:N,TestAppendIfMissing,TestMergeNewVersion,TestFilterUnfixed,TestIsDisplayUpdatableNum,TestSourceLinks,TestLibraryScanners_Find/multi_file,TestAddBinaryName,TestMaxCvssScores,TestFindByBinName,TestSortByConfiden,TestFilterIgnorePkgs,TestMaxCvss2Scores,TestDistroAdvisories_AppendIfMissing,TestVulnInfo_AttackVector/2.0:A,TestMaxCvss3Scores,TestLibraryScanners_Find/single_file > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
