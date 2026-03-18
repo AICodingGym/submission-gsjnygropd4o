@@ -96,7 +96,6 @@ pip install pypi-timemachine
 pypi-timemachine 2025-08-26 --port 9876 &
 pip config set global.index-url http://127.0.0.1:9876/
 sleep 3
-pip install "setuptools<69" || true
 pip install pytest-rerunfailures
 export PYTEST_ADDOPTS="--tb=short -v --continue-on-collection-errors --reruns=3"
 
@@ -113,6 +112,9 @@ pip install attrs==23.1.0 beautifulsoup4==4.12.2 blinker==1.6.2 certifi==2023.7.
 
 export PYTEST_QT_API=pyqt5
 export QUTE_QT_WRAPPER=PyQt5
+
+# Pin setuptools before 67.3.0 to avoid pkg_resources DeprecationWarning
+pip install "setuptools<67.3"
 
 echo "================= 0909 BUILD START 0909 ================="
 echo "================= 0909 BUILD END 0909 ================="
