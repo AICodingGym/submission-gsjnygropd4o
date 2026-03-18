@@ -18,6 +18,7 @@ git checkout 83bcca6e669ba2e4102f26c4a2b52f78c7861f1a -- scan/base_test.go
 
 # Run tests
 bash /workspace/run_script.sh TestSplitIntoBlocks,Test_detectScanDest/asterisk,Test_base_parseListenPorts/empty,Test_base_parseLsProcExe/systemd,Test_base_parseLsOf/lsof,Test_updatePortStatus/nil_affected_procs,Test_matchListenPorts,Test_detectScanDest/dup-addr,TestGetUpdatablePackNames,Test_updatePortStatus/nil_listen_ports,TestParseYumCheckUpdateLinesAmazon,TestParseSystemctlStatus,Test_detectScanDest,Test_base_parseGrepProcMap,Test_detectScanDest/single-addr,TestParseChangelog/vlc,TestParseDockerPs,TestParseYumCheckUpdateLine,Test_base_parseListenPorts/normal,Test_debian_parseGetPkgName,Test_debian_parseGetPkgName/success,Test_base_parseLsProcExe,TestParseIp,Test_detectScanDest/empty,Test_matchListenPorts/open_empty,TestGetChangelogCache,TestParseYumCheckUpdateLines,TestDecorateCmd,TestParseBlock,Test_matchListenPorts/single_match,Test_matchListenPorts/asterisk_match,TestParsePkgInfo,TestScanUpdatablePackages,Test_updatePortStatus/update_multi_packages,TestIsRunningKernelSUSE,TestParseIfconfig,TestParseInstalledPackagesLinesRedhat,Test_updatePortStatus/update_match_single_address,Test_updatePortStatus/update_match_asterisk,Test_base_parseListenPorts,TestParseChangelog/realvnc-vnc-server,Test_updatePortStatus,TestScanUpdatablePackage,Test_base_parseLsOf,Test_updatePortStatus/update_match_multi_address,TestParseAptCachePolicy,TestIsRunningKernelRedHatLikeLinux,TestGetCveIDsFromChangelog,TestSplitAptCachePolicy,Test_base_parseListenPorts/ipv6_loopback,TestIsAwsInstanceID,TestParseLxdPs,Test_detectScanDest/multi-addr,Test_matchListenPorts/no_match_address,Test_matchListenPorts/no_match_port,TestParseScanedPackagesLineRedhat,Test_matchListenPorts/port_empty,TestParseChangelog,TestParseNeedsRestarting,Test_base_parseListenPorts/asterisk,TestViaHTTP,Test_base_parseGrepProcMap/systemd,TestParseApkVersion,TestParseOSRelease,TestParseApkInfo,TestParsePkgVersion,TestParseCheckRestart > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
