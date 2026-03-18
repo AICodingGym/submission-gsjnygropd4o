@@ -18,6 +18,7 @@ git checkout 1077729a19c0ce902e713cf6fab42c91fb7907f1 -- test/unit-tests/compone
 
 # Run tests
 bash /workspace/run_script.sh test/unit-tests/components/views/rooms/wysiwyg_composer/utils/autocomplete-test.ts,test/unit-tests/components/views/messages/MStickerBody-test.ts,test/unit-tests/vector/platform/WebPlatform-test.ts,test/unit-tests/components/views/spaces/SpaceTreeLevel-test.ts,test/unit-tests/components/views/settings/devices/DeviceDetails-test.ts,test/unit-tests/components/views/spaces/useUnreadThreadRooms-test.ts,test/unit-tests/components/views/elements/SettingsField-test.ts,test/unit-tests/theme-test.ts,test/unit-tests/utils/PinningUtils-test.ts,test/unit-tests/utils/AutoDiscoveryUtils-test.ts,test/unit-tests/components/views/messages/MVideoBody-test.ts,test/unit-tests/components/views/settings/encryption/RecoveryPanel-test.ts,test/unit-tests/components/structures/TimelinePanel-test.ts,test/unit-tests/components/viewmodels/roomlist/RoomListViewModel-test.ts,test/unit-tests/accessibility/RovingTabIndex-test.ts,test/unit-tests/components/views/polls/pollHistory/PollHistory-test.ts,test/unit-tests/components/views/settings/EventIndexPanel-test.ts,test/unit-tests/components/views/settings/tabs/room/SecurityRoomSettingsTab-test.ts,test/unit-tests/utils/local-room-test.ts,test/unit-tests/editor/diff-test.ts,test/unit-tests/components/views/dialogs/security/CreateKeyBackupDialog-test.ts,test/unit-tests/utils/leave-behaviour-test.ts,test/unit-tests/utils/permalinks/MatrixToPermalinkConstructor-test.ts,test/unit-tests/components/views/spaces/SpacePanel-test.ts,test/unit-tests/components/views/rooms/SendMessageComposer-test.ts,test/unit-tests/hooks/useNotificationSettings-test.ts,test/unit-tests/components/views/rooms/wysiwyg_composer/components/LinkModal-test.ts,test/unit-tests/components/viewmodels/roomlist/RoomListViewModel-test.tsx,test/unit-tests/components/views/settings/Notifications-test.ts,test/unit-tests/settings/SettingsStore-test.ts,test/unit-tests/components/views/rooms/UserIdentityWarning-test.ts,test/unit-tests/components/views/messages/DateSeparator-test.ts,test/unit-tests/components/views/emojipicker/EmojiPicker-test.ts,test/unit-tests/components/views/rooms/NotificationDecoration-test.ts,test/unit-tests/Rooms-test.ts,test/unit-tests/components/views/room_settings/RoomProfileSettings-test.ts,test/unit-tests/components/views/dialogs/AccessSecretStorageDialog-test.ts,test/unit-tests/SupportedBrowser-test.ts > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
