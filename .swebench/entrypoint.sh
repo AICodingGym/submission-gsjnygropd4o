@@ -18,6 +18,7 @@ git checkout f63160f38459fb552d00fcc60d4064977a9095a6 -- test/components/views/m
 
 # Run tests
 bash /workspace/run_script.sh test/theme-test.ts,test/components/views/polls/pollHistory/PollListItemEnded-test.ts,test/widgets/ManagedHybrid-test.ts,test/stores/room-list/MessagePreviewStore-test.ts,test/components/structures/LoggedInView-test.ts,test/components/views/messages/MKeyVerificationRequest-test.ts,test/components/views/messages/MKeyVerificationRequest-test.tsx,test/utils/arrays-test.ts,test/components/structures/auth/ForgotPassword-test.ts,test/voice-broadcast/models/VoiceBroadcastPreRecording-test.ts,test/components/views/beacon/BeaconViewDialog-test.ts,test/components/views/messages/MLocationBody-test.ts,test/components/views/dialogs/InviteDialog-test.ts,test/components/views/rooms/RoomPreviewCard-test.ts,test/utils/device/parseUserAgent-test.ts,test/events/EventTileFactory-test.ts,test/hooks/useDebouncedCallback-test.ts > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
