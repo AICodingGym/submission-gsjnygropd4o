@@ -18,6 +18,7 @@ git checkout bb69574e02bd62e5ccd3cebb25e1c992641afb2a -- lib/utils/parse/parse_t
 
 # Run tests
 bash /workspace/run_script.sh TestRoleVariable/no_curly_bracket_prefix,TestRoleVariable/invalid_dot_syntax,TestInterpolate/error_in_mapping_traits,TestInterpolate/mapped_traits_with_email.local,TestRoleVariable,TestInterpolate,TestRoleVariable/empty_variable,TestRoleVariable/variable_with_local_function,TestRoleVariable/invalid_syntax,TestRoleVariable/string_literal,TestInterpolate/missed_traits,TestRoleVariable/internal_with_no_brackets,TestRoleVariable/no_curly_bracket_suffix,TestRoleVariable/variable_with_prefix_and_suffix,TestRoleVariable/valid_with_brackets,TestInterpolate/mapped_traits,TestInterpolate/traits_with_prefix_and_suffix,TestRoleVariable/internal_with_spaces_removed,TestRoleVariable/external_with_no_brackets,TestInterpolate/literal_expression,TestRoleVariable/invalid_variable_syntax,TestRoleVariable/too_many_levels_of_nesting_in_the_variable > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
