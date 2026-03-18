@@ -18,6 +18,7 @@ git checkout 139f3a81b66c47e6d8f70ce6c4afe7a9196a6ea8 -- scanner/base_test.go
 
 # Run tests
 bash /workspace/run_script.sh TestParseYumCheckUpdateLinesAmazon,Test_redhatBase_rebootRequired,TestIsRunningKernelSUSE,Test_updatePortStatus/update_match_asterisk,TestParseApkVersion,Test_updatePortStatus/nil_affected_procs,Test_findPortScanSuccessOn/open_empty,Test_redhatBase_rebootRequired/uek_kernel_needs-reboot,TestGetChangelogCache,Test_base_parseGrepProcMap,TestGetCveIDsFromChangelog,Test_redhatBase_parseRpmQfLine,TestParseIfconfig,Test_redhatBase_parseRpmQfLine/permission_denied_will_be_ignored,Test_findPortScanSuccessOn/no_match_address,Test_updatePortStatus/nil_listen_ports,TestParseYumCheckUpdateLine,TestParseSSHKeygen,TestParseCheckRestart,TestSplitIntoBlocks,TestScanUpdatablePackage,TestParseInstalledPackagesLinesRedhat,TestParseChangelog/realvnc-vnc-server,TestParseYumCheckUpdateLines,Test_redhatBase_rebootRequired/uek_kernel_no-reboot,Test_detectScanDest,TestParseNeedsRestarting,Test_detectScanDest/single-addr,Test_redhatBase_rebootRequired/kerne_needs-reboot,Test_debian_parseGetPkgName,TestParsePkgInfo,TestParseSSHConfiguration,TestParseInstalledPackagesLine,Test_base_parseLsOf,TestParseOSRelease,Test_redhatBase_parseDnfModuleList,Test_updatePortStatus/update_match_single_address,TestViaHTTP,TestDecorateCmd,TestParseDockerPs,TestIsRunningKernelRedHatLikeLinux,Test_findPortScanSuccessOn/port_empty,Test_findPortScanSuccessOn/asterisk_match,Test_base_parseGrepProcMap/systemd,TestParseBlock,Test_findPortScanSuccessOn/no_match_port,Test_base_parseLsOf/lsof-duplicate-port,TestParseChangelog/vlc,Test_updatePortStatus/update_multi_packages,TestGetUpdatablePackNames,Test_updatePortStatus,TestParseIp,TestIsAwsInstanceID,Test_findPortScanSuccessOn,Test_redhatBase_parseDnfModuleList/Success,Test_debian_parseGetPkgName/success,TestParsePkgVersion,TestParseChangelog,Test_detectScanDest/asterisk,Test_base_parseLsProcExe,Test_redhatBase_parseRpmQfLine/No_such_file_or_directory_will_be_ignored,TestScanUpdatablePackages,TestParseLxdPs,TestParseApkInfo,TestParseSSHScan,TestParseSystemctlStatus,Test_detectScanDest/dup-addr-port,Test_redhatBase_parseRpmQfLine/valid_line,Test_base_parseLsProcExe/systemd,Test_redhatBase_parseRpmQfLine/is_not_owned_by_any_package,Test_detectScanDest/empty,Test_base_parseLsOf/lsof,TestParseAptCachePolicy,Test_findPortScanSuccessOn/single_match,TestSplitAptCachePolicy,Test_redhatBase_rebootRequired/kerne_no-reboot,Test_detectScanDest/multi-addr,Test_redhatBase_parseRpmQfLine/err,Test_updatePortStatus/update_match_multi_address > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
