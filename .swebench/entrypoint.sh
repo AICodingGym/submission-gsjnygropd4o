@@ -18,6 +18,7 @@ git checkout 3a5c1e26394df2cb4fb3f01147fb9979662972c5 -- lib/backend/kubernetes/
 
 # Run tests
 bash /workspace/run_script.sh TestBackend_Exists/secret_exists,TestBackend_Put/secret_exists_and_has_keys,TestBackend_Get/secret_exists_and_key_is_present_but_empty,TestBackend_Get/secret_exists_but_key_not_present,TestBackend_Put,TestBackend_Exists/secret_exists_but_generates_an_error_because_TELEPORT_REPLICA_NAME_is_not_set,TestBackend_Put/secret_does_not_exist_and_should_be_created,TestBackend_Get/secret_exists_and_key_is_present,TestBackend_Exists/secret_exists_but_generates_an_error_because_KUBE_NAMESPACE_is_not_set,TestBackend_Get/secret_does_not_exist,TestBackend_Exists,TestBackend_Exists/secret_does_not_exist,TestBackend_Get > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
