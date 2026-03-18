@@ -119,6 +119,9 @@ make components || true
 make i18n || true
 echo "================= 0909 BUILD END 0909 ================="
 
+# Pin setuptools to avoid typeguard entry_points(group=) incompatibility on Python 3.9
+pip install "setuptools<69"
+
 EOFBUILD
 RUN chmod +x /build.sh
 RUN /build.sh
