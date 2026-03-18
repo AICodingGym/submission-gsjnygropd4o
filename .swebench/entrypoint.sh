@@ -18,6 +18,7 @@ git checkout abd80417728b16c6502067914d27989ee575f0ee -- scan/redhatbase_test.go
 
 # Run tests
 bash /workspace/run_script.sh Test_redhatBase_parseRpmQfLine,TestParseChangelog/vlc,Test_redhatBase_parseRpmQfLine/is_not_owned_by_any_package,TestIsAwsInstanceID,Test_matchListenPorts/open_empty,Test_detectScanDest/asterisk,TestParseInstalledPackagesLine,Test_base_parseGrepProcMap,TestViaHTTP,Test_updatePortStatus/nil_affected_procs,Test_matchListenPorts/no_match_port,TestParsePkgInfo,TestScanUpdatablePackage,Test_updatePortStatus,Test_updatePortStatus/update_multi_packages,TestParseAptCachePolicy,TestIsRunningKernelSUSE,Test_matchListenPorts,Test_base_parseLsOf,TestParseApkVersion,Test_updatePortStatus/update_match_asterisk,TestIsRunningKernelRedHatLikeLinux,TestSplitAptCachePolicy,TestParseChangelog/realvnc-vnc-server,TestGetUpdatablePackNames,Test_matchListenPorts/port_empty,TestParseCheckRestart,TestParseIfconfig,Test_debian_parseGetPkgName/success,Test_base_parseLsProcExe/systemd,TestParseYumCheckUpdateLine,Test_detectScanDest/single-addr,Test_detectScanDest/dup-addr-port,Test_base_parseGrepProcMap/systemd,TestParseChangelog,TestParseLxdPs,TestGetCveIDsFromChangelog,Test_debian_parseGetPkgName,TestParseDockerPs,TestParseApkInfo,Test_base_parseLsOf/lsof-duplicate-port,TestParsePkgVersion,TestParseInstalledPackagesLinesRedhat,Test_redhatBase_parseRpmQfLine/permission_denied_will_be_ignored,Test_base_parseLsOf/lsof,TestParseNeedsRestarting,TestParseSystemctlStatus,Test_detectScanDest,Test_updatePortStatus/update_match_multi_address,TestGetChangelogCache,Test_redhatBase_parseRpmQfLine/No_such_file_or_directory_will_be_ignored,Test_matchListenPorts/single_match,TestParseIp,TestScanUpdatablePackages,Test_detectScanDest/multi-addr,Test_updatePortStatus/nil_listen_ports,Test_matchListenPorts/no_match_address,TestParseYumCheckUpdateLinesAmazon,Test_redhatBase_parseDnfModuleList,Test_base_parseLsProcExe,Test_redhatBase_parseDnfModuleList/Success,Test_detectScanDest/empty,TestDecorateCmd,Test_redhatBase_parseRpmQfLine/valid_line,TestParseOSRelease,Test_redhatBase_parseRpmQfLine/err,TestSplitIntoBlocks,Test_matchListenPorts/asterisk_match,TestParseYumCheckUpdateLines,Test_updatePortStatus/update_match_single_address,TestParseBlock > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
