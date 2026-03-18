@@ -18,6 +18,7 @@ git checkout 18c03daa865d3c5b10e52b669cd50be34c67b2e5 -- test/Markdown-test.ts
 
 # Run tests
 bash /workspace/run_script.sh test/components/structures/ThreadView-test.ts,test/UserActivity-test.ts,test/utils/beacon/timeline-test.ts,test/audio/VoiceRecording-test.ts,test/Markdown-test.ts,test/HtmlUtils-test.ts,test/components/structures/RightPanel-test.ts,test/utils/FixedRollingArray-test.ts > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
