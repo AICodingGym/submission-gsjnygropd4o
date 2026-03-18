@@ -18,6 +18,7 @@ git checkout e5fe37c379e1eec2dd3492c5737c0be761050b26 -- internal/storage/fs/git
 
 # Run tests
 bash /workspace/run_script.sh TestCountNamespaces,TestFS_Invalid_VariantFlag_Distribution,Test_SourceSubscribe,TestGetEvaluationRollouts,TestFS_Invalid_BooleanFlag_Segment,TestListRollouts,TestListNamespaces,TestFS_YAML_Stream,Test_SourceGet,Test_SourceString,TestListFlags,TestCountSegments,TestCountFlags,TestListRules,TestFSWithIndex,TestCountRules,TestCountRollouts,TestFS_Empty_Features_File,TestGetEvaluationDistributions,TestFS_Invalid_VariantFlag_Segment,TestListSegments,TestFSWithoutIndex,Test_Store > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
