@@ -18,6 +18,7 @@ git checkout 53b42e321777a598aaf2bb3eab22d710569f83a8 -- test/components/views/d
 
 # Run tests
 bash /workspace/run_script.sh test/components/views/settings/tabs/room/SecurityRoomSettingsTab-test.ts,test/components/views/dialogs/spotlight/RoomResultContextMenus-test.tsx,test/utils/ShieldUtils-test.ts,test/components/structures/LoggedInView-test.ts,test/stores/room-list/MessagePreviewStore-test.ts,test/components/views/rooms/RoomHeader-test.ts,test/components/views/settings/tabs/room/VoipRoomSettingsTab-test.ts,test/components/structures/ThreadView-test.ts,test/components/views/dialogs/spotlight/RoomResultContextMenus-test.ts,test/components/views/rooms/RoomHeader-test.tsx,test/components/views/rooms/wysiwyg_composer/SendWysiwygComposer-test.ts,test/components/views/rooms/RoomTile-test.ts,test/components/structures/auth/Registration-test.ts,test/components/views/elements/crypto/VerificationQRCode-test.ts,test/components/views/rooms/RoomTile-test.tsx,test/utils/DateUtils-test.ts,test/components/views/messages/MessageActionBar-test.ts,test/utils/tooltipify-test.ts,test/utils/exportUtils/HTMLExport-test.ts > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
