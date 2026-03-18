@@ -18,6 +18,7 @@ git checkout 288c5519ce0dec9622361a5e5d6cd36aa2d9e348 -- tool/tctl/common/auth_c
 
 # Run tests
 bash /workspace/run_script.sh TestAuthSignKubeconfig/k8s_proxy_running_locally_without_public_addr,TestAuthSignKubeconfig/--kube-cluster_specified_with_invalid_cluster,TestDatabaseServerResource/get_specific_database_server,TestAuthSignKubeconfig/--kube-cluster_specified_with_valid_cluster,TestGenerateDatabaseKeys/database_certificate,TestCheckKubeCluster/local_cluster,_empty_kube_cluster,TestCheckKubeCluster/remote_cluster,_empty_kube_cluster,TestTrimDurationSuffix/trim_minutes/seconds,TestCheckKubeCluster/local_cluster,_invalid_kube_cluster,TestAuthSignKubeconfig/k8s_proxy_running_locally_with_public_addr,TestTrimDurationSuffix,TestDatabaseResource,TestTrimDurationSuffix/trim_seconds,TestTrimDurationSuffix/does_not_trim_non-zero_suffix,TestGenerateDatabaseKeys/mongodb_certificate,TestAppResource,TestDatabaseServerResource/get_all_database_servers,TestCheckKubeCluster/local_cluster,_valid_kube_cluster,TestCheckKubeCluster/local_cluster,_empty_kube_cluster,_no_registered_kube_clusters,TestAuthSignKubeconfig/--proxy_specified,TestCheckKubeCluster,TestGenerateDatabaseKeys/database_certificate_multiple_SANs,TestAuthSignKubeconfig/k8s_proxy_from_cluster_info,TestCheckKubeCluster/non-k8s_output_format,TestGenerateDatabaseKeys,TestCheckKubeCluster/remote_cluster,_non-empty_kube_cluster,TestDatabaseServerResource,TestTrimDurationSuffix/does_not_trim_zero_in_the_middle,TestAuthSignKubeconfig,TestDatabaseServerResource/remove_database_server > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
