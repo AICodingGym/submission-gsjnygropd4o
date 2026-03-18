@@ -18,6 +18,7 @@ git checkout 2ce8a0331e8a8f63f2c1b555db8277ffe5aa2e63 -- internal/server/middlew
 
 # Run tests
 bash /workspace/run_script.sh TestCacheUnaryInterceptor_UpdateVariant,TestAuditUnaryInterceptor_OrderRollout,TestAuditUnaryInterceptor_CreateSegment,TestAuthMetadataAuditUnaryInterceptor,TestAuditUnaryInterceptor_CreateDistribution,TestFliptAcceptServerVersionUnaryInterceptor,TestAuditUnaryInterceptor_UpdateFlag,TestCacheUnaryInterceptor_UpdateFlag,TestAuditUnaryInterceptor_DeleteDistribution,TestAuditUnaryInterceptor_UpdateVariant,TestAuditUnaryInterceptor_OrderRule,TestAuditUnaryInterceptor_DeleteVariant,TestCacheUnaryInterceptor_CreateVariant,TestCacheUnaryInterceptor_Evaluation_Variant,TestAuditUnaryInterceptor_UpdateSegment,TestAuditUnaryInterceptor_CreateToken,TestAuditUnaryInterceptor_CreateRule,TestCacheUnaryInterceptor_DeleteVariant,TestEvaluationUnaryInterceptor_Noop,TestAuditUnaryInterceptor_CreateRollout,TestAuditUnaryInterceptor_DeleteRollout,TestAuditUnaryInterceptor_CreateConstraint,TestAuditUnaryInterceptor_DeleteNamespace,TestAuditUnaryInterceptor_CreateFlag,TestAuditUnaryInterceptor_CreateVariant,TestAuditUnaryInterceptor_UpdateRule,TestCacheUnaryInterceptor_DeleteFlag,TestAuditUnaryInterceptor_DeleteSegment,TestAuditUnaryInterceptor_DeleteConstraint,TestCacheUnaryInterceptor_Evaluate,TestErrorUnaryInterceptor,TestAuditUnaryInterceptor_UpdateConstraint,TestCacheUnaryInterceptor_GetFlag,TestValidationUnaryInterceptor,TestAuditUnaryInterceptor_DeleteFlag,TestAuditUnaryInterceptor_UpdateRollout,TestEvaluationUnaryInterceptor_BatchEvaluation,TestCacheUnaryInterceptor_Evaluation_Boolean,TestAuditUnaryInterceptor_CreateNamespace,TestAuditUnaryInterceptor_DeleteRule,TestAuditUnaryInterceptor_UpdateNamespace,TestEvaluationUnaryInterceptor_Evaluation,TestAuditUnaryInterceptor_UpdateDistribution > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
