@@ -18,6 +18,7 @@ git checkout dae029cba7cdb98dfb1a6b416c00d324241e6063 -- internal/ext/importer_f
 
 # Run tests
 bash /workspace/run_script.sh TestImport,TestImport_Export,TestImport_Namespaces_Mix_And_Match,TestOpen,TestJSONField_Scan,TestImport_FlagType_LTVersion1_1,TestParse,TestNullableTimestamp_Value,TestImport_Rollouts_LTVersion1_1,TestMigratorRun,TestTimestamp_Value,TestMigratorRun_NoChange,TestDBTestSuite,TestNullableTimestamp_Scan,TestAdaptedDriver,TestTimestamp_Scan,TestImport_InvalidVersion,TestJSONField_Value,Test_AdaptError,FuzzImport,TestMigratorExpectedVersions,TestAdaptedConnectorConnect,TestExport > /workspace/stdout.log 2> /workspace/stderr.log
+RUN_SCRIPT_EXIT=$?
 
 # Parse results
 python /workspace/parser.py /workspace/stdout.log /workspace/stderr.log /workspace/output.json || true
@@ -30,18 +31,5 @@ cat /workspace/stderr.log 2>/dev/null || true
 echo '=== PARSED OUTPUT ==='
 cat /workspace/output.json 2>/dev/null || true
 
-# Exit non-zero if any test failed
-python -c "
-import json, sys
-try:
-    with open('/workspace/output.json') as f:
-        data = json.load(f)
-    failed = [t for t in data.get('tests', []) if t.get('status') == 'FAILED']
-    if failed:
-        print(f'{len(failed)} test(s) FAILED')
-        sys.exit(1)
-    print('All tests passed')
-except Exception as e:
-    print(f'Could not check results: {e}')
-    sys.exit(1)
-"
+# Exit with the test runner's exit code (non-zero = build failure or test failures)
+exit $RUN_SCRIPT_EXIT
