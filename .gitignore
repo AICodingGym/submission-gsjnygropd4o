@@ -61,3 +61,7 @@ build/mage_output_file.go
 .swe-bench-instance.json
 .swe-bench-gold.patch
 .swe-bench-test.patch
+# AI Coding Gym infra (do not commit changes to these files)
+.*
+*.md
+!.gitignore
